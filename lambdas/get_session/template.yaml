@@ -1,6 +1,6 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: get_session — returns session details from OpenF1 by session_key
+Description: get_session - returns OpenF1 session details by session_key
 
 Globals:
   Function:
@@ -32,7 +32,7 @@ Resources:
 
 Outputs:
   ApiEndpoint:
-    Description: "Base URL — use /session?session_key=..."
+    Description: "Base URL - use GET /session?session_key=..."
     Value: !GetAtt ServerlessHttpApi.ApiEndpoint
   GetSessionFunctionArn:
     Description: ARN of the Lambda function
