@@ -37,6 +37,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref DriversCacheTable
+          DYNAMODB_ENDPOINT: ""
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DriversCacheTable
@@ -46,10 +47,15 @@ Resources:
           Properties:
             Path: /drivers
             Method: GET
+        GetCache:
+          Type: HttpApi
+          Properties:
+            Path: /cache
+            Method: GET
 
 Outputs:
   ApiEndpoint:
-    Description: URL base del HTTP API (añade /drivers?session_key=...)
+    Description: "Base URL — use /drivers?session_key=... to import, /cache?session_key=... to read"
     Value: !GetAtt ServerlessHttpApi.ApiEndpoint
   DriversTableName:
     Description: Tabla DynamoDB con caché por session_key
