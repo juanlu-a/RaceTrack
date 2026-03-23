@@ -36,21 +36,21 @@ create-table:
 ## Invoke GET /list — fetches from OpenF1, returns list, no DB touch
 invoke-list: build
 	$(AWS_LOCAL) sam local invoke F1DriversApiFunction \
-		--event event_list.json \
+		--event events/event_list.json \
 		--env-vars env.json \
 		--docker-network $(NETWORK)
 
 ## Invoke GET /drivers — imports from OpenF1 and saves to DynamoDB
 invoke: build
 	$(AWS_LOCAL) sam local invoke F1DriversApiFunction \
-		--event event.json \
+		--event events/event.json \
 		--env-vars env.json \
 		--docker-network $(NETWORK)
 
 ## Invoke GET /cache — reads from DynamoDB (run 'make invoke' first)
 invoke-cache: build
 	$(AWS_LOCAL) sam local invoke F1DriversApiFunction \
-		--event event_cache.json \
+		--event events/event_cache.json \
 		--env-vars env.json \
 		--docker-network $(NETWORK)
 
