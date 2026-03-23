@@ -9,7 +9,7 @@ TABLE           = DriversCacheTable-local
 # DynamoDB Local doesn't validate credentials, so any value works.
 AWS_LOCAL       = AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_DEFAULT_REGION=us-east-2
 
-.PHONY: build setup create-table invoke invoke-cache start-api stop
+.PHONY: build setup create-table invoke invoke-list invoke-cache start-api stop
 
 ## sam build — compile dependencies into .aws-sam/
 build:
@@ -32,6 +32,13 @@ create-table:
 		--endpoint-url $(DYNAMO_URL) 2>/dev/null \
 	&& echo "Table '$(TABLE)' created." \
 	|| echo "Table '$(TABLE)' already exists — skipping."
+
+## Invoke GET /list — fetches from OpenF1, returns list, no DB touch
+invoke-list: build
+	$(AWS_LOCAL) sam local invoke F1DriversApiFunction \
+		--event event_list.json \
+		--env-vars env.json \
+		--docker-network $(NETWORK)
 
 ## Invoke GET /drivers — imports from OpenF1 and saves to DynamoDB
 invoke: build

@@ -32,6 +32,11 @@ Runs on `http://localhost:3000`. Keep this terminal open.
 
 ## Endpoints
 
+### List pilots from F1 API (no DB touch)
+```
+GET http://localhost:3000/list?session_key=9158
+```
+
 ### Import pilots from F1 API → saves to DynamoDB
 ```
 GET http://localhost:3000/drivers?session_key=9158
@@ -42,14 +47,17 @@ GET http://localhost:3000/drivers?session_key=9158
 GET http://localhost:3000/cache?session_key=9158
 ```
 
-> Change `9158` to any valid F1 session key. Call `/drivers` first, then `/cache`.
+> Change `9158` to any valid F1 session key.
 
 ---
 
 ## Other commands
 
 ```bash
-# Invoke GET /drivers once (without starting the full server)
+# Invoke GET /list once (without starting the full server)
+make invoke-list
+
+# Invoke GET /drivers once
 make invoke
 
 # Invoke GET /cache once
