@@ -42,6 +42,11 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref DriversCacheTable
       Events:
+        GetList:
+          Type: HttpApi
+          Properties:
+            Path: /list
+            Method: GET
         GetDrivers:
           Type: HttpApi
           Properties:

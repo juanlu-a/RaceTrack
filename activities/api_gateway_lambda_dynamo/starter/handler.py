@@ -1,6 +1,7 @@
 """
 Lambda for API Gateway (HTTP API):
-  GET /drivers?session_key=...  → Always fetches from OpenF1 and saves to DynamoDB
+  GET /list?session_key=...     → Fetches from OpenF1 and returns the list (no DB touch)
+  GET /drivers?session_key=...  → Fetches from OpenF1 and saves to DynamoDB
   GET /cache?session_key=...    → Reads from DynamoDB what was previously saved
 """
 import json
@@ -53,8 +54,31 @@ def _normalize_drivers(raw: list) -> list:
     ]
 
 
+def _list_drivers(session_key: str) -> dict:
+    """Fetch from OpenF1 and return the list — no DynamoDB interaction."""
+    url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+    except requests.exceptions.RequestException as e:
+        return _json_response(502, {"error": "Failed to call OpenF1 API", "details": str(e)})
+
+    if not isinstance(data, list):
+        return _json_response(502, {"error": "Unexpected response from OpenF1"})
+
+    pilots = _normalize_drivers(data)
+    return _json_response(200, {
+        "sessionKey": session_key,
+        "pilotCount": len(pilots),
+        "pilots": pilots,
+    })
+
+
 def _import_drivers(session_key: str) -> dict:
     """Always fetch from OpenF1, save to DynamoDB, return import result."""
+    if not TABLE_NAME:
+        return _json_response(500, {"error": "TABLE_NAME is not configured"})
     url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
     try:
         r = requests.get(url, timeout=15)
@@ -90,6 +114,8 @@ def _import_drivers(session_key: str) -> dict:
 
 def _get_from_cache(session_key: str) -> dict:
     """Read session data from DynamoDB."""
+    if not TABLE_NAME:
+        return _json_response(500, {"error": "TABLE_NAME is not configured"})
     try:
         resp = dynamodb.Table(TABLE_NAME).get_item(Key={"session_key": session_key})
     except Exception as e:
@@ -111,9 +137,6 @@ def _get_from_cache(session_key: str) -> dict:
 
 
 def handler(event, context):
-    if not TABLE_NAME:
-        return _json_response(500, {"error": "TABLE_NAME is not configured"})
-
     session_key = _get_session_key(event)
     if not session_key:
         return _json_response(400, {
@@ -123,7 +146,9 @@ def handler(event, context):
 
     route = event.get("routeKey", "")
 
-    if "GET /drivers" in route:
+    if "GET /list" in route:
+        return _list_drivers(session_key)
+    elif "GET /drivers" in route:
         return _import_drivers(session_key)
     elif "GET /cache" in route:
         return _get_from_cache(session_key)
