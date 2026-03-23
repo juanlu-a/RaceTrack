@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: drivers_summary — returns driver count grouped by team and country
+Description: driver_summary — resumen de piloto (RaceTrack)
 
 Globals:
   Function:
@@ -18,22 +18,22 @@ Globals:
         - "*"
 
 Resources:
-  DriversSummaryFunction:
+  DriverSummaryFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handler.handler
       CodeUri: .
       Events:
-        GetSummary:
+        DriverSummary:
           Type: HttpApi
           Properties:
-            Path: /summary
+            Path: /driver-summary
             Method: GET
 
 Outputs:
   ApiEndpoint:
-    Description: "Base URL — use /summary?session_key=..."
+    Description: "Base URL — use /driver-summary"
     Value: !GetAtt ServerlessHttpApi.ApiEndpoint
-  DriversSummaryFunctionArn:
+  DriverSummaryFunctionArn:
     Description: ARN of the Lambda function
-    Value: !GetAtt DriversSummaryFunction.Arn
+    Value: !GetAtt DriverSummaryFunction.Arn

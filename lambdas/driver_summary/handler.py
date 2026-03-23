@@ -1,9 +1,9 @@
 """
 Lambda for API Gateway (HTTP API):
-  GET /summary?session_key=...  → Returns a summary of drivers grouped by team and country
+  GET /driver-summary?session_key=...  → Lista de pilotos de la sesión (OpenF1 drivers)
 """
 import json
-from collections import Counter
+
 import requests
 
 
@@ -13,6 +13,18 @@ def _json_response(status_code: int, body: dict) -> dict:
         "headers": {"Content-Type": "application/json"},
         "body": json.dumps(body, default=str),
     }
+
+
+def _normalize_drivers(raw: list) -> list:
+    return [
+        {
+            "pilotName": driver.get("full_name"),
+            "pilotNumber": driver.get("driver_number"),
+            "pilotTeam": driver.get("team_name"),
+            "pilotCountry": driver.get("country_code"),
+        }
+        for driver in raw
+    ]
 
 
 def handler(event, context):
@@ -35,12 +47,9 @@ def handler(event, context):
     if not isinstance(data, list):
         return _json_response(502, {"error": "Unexpected response from OpenF1"})
 
-    teams = Counter(d.get("team_name") for d in data)
-    countries = Counter(d.get("country_code") for d in data)
-
+    pilots = _normalize_drivers(data)
     return _json_response(200, {
         "sessionKey": session_key,
-        "totalDrivers": len(data),
-        "byTeam": [{"team": t, "driverCount": c} for t, c in sorted(teams.items())],
-        "byCountry": [{"country": c, "driverCount": n} for c, n in sorted(countries.items(), key=lambda x: -x[1])],
+        "pilotCount": len(pilots),
+        "pilots": pilots,
     })
