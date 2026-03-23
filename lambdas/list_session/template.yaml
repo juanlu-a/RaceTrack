@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: list_session — returns all F1 sessions from OpenF1 for a given year
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+        - GET
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      AllowOrigins:
+        - "*"
+
+Resources:
+  ListSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Events:
+        ListSession:
+          Type: HttpApi
+          Properties:
+            Path: /sessions
+            Method: GET
+
+Outputs:
+  ApiEndpoint:
+    Description: "Base URL — use /sessions?year=..."
+    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
+  ListSessionFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt ListSessionFunction.Arn

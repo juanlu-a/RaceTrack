@@ -1,0 +1,10 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /sessions",
+  "rawPath": "/sessions",
+  "rawQueryString": "year=2023",
+  "headers": { "accept": "application/json" },
+  "queryStringParameters": { "year": "2023" },
+  "requestContext": { "http": { "method": "GET", "path": "/sessions" } },
+  "isBase64Encoded": false
+}

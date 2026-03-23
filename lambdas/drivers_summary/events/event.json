@@ -1,0 +1,10 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /summary",
+  "rawPath": "/summary",
+  "rawQueryString": "session_key=9158",
+  "headers": { "accept": "application/json" },
+  "queryStringParameters": { "session_key": "9158" },
+  "requestContext": { "http": { "method": "GET", "path": "/summary" } },
+  "isBase64Encoded": false
+}

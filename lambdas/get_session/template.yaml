@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: get_session — returns session details from OpenF1 by session_key
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+        - GET
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      AllowOrigins:
+        - "*"
+
+Resources:
+  GetSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Events:
+        GetSession:
+          Type: HttpApi
+          Properties:
+            Path: /session
+            Method: GET
+
+Outputs:
+  ApiEndpoint:
+    Description: "Base URL — use /session?session_key=..."
+    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
+  GetSessionFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt GetSessionFunction.Arn

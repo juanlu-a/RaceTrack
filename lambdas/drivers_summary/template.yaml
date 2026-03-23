@@ -1,0 +1,39 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: drivers_summary — returns driver count grouped by team and country
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+        - GET
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      AllowOrigins:
+        - "*"
+
+Resources:
+  DriversSummaryFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Events:
+        GetSummary:
+          Type: HttpApi
+          Properties:
+            Path: /summary
+            Method: GET
+
+Outputs:
+  ApiEndpoint:
+    Description: "Base URL — use /summary?session_key=..."
+    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
+  DriversSummaryFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt DriversSummaryFunction.Arn
