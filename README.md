@@ -23,13 +23,4 @@ lambdas/
 | `list_session` | `GET /sessions` | `year` | No |
 | `drivers_summary` | `GET /summary` | `session_key` | No |
 
-## Quick start
 
-Each lambda is self-contained. Go into the lambda folder and run:
-
-```bash
-make build
-make start-api   # starts local API on http://localhost:3000
-```
-
-For `list_drivers` (uses DynamoDB locally), run `make setup` first.
