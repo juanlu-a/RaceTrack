@@ -6,7 +6,7 @@ build:
 	sam build
 
 invoke: build
-	$(AWS_LOCAL) sam local invoke DriversSummaryFunction \
+	$(AWS_LOCAL) sam local invoke DriverSummaryFunction \
 		--event events/event.json \
 		--skip-pull-image
 
