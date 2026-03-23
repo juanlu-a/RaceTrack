@@ -1,6 +1,6 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: list_session — returns all F1 sessions from OpenF1 for a given year
+Description: list_session - returns OpenF1 sessions (all or by year)
 
 Globals:
   Function:
@@ -32,7 +32,7 @@ Resources:
 
 Outputs:
   ApiEndpoint:
-    Description: "Base URL — use /sessions?year=..."
+    Description: "Base URL - use GET /sessions or /sessions?year=2023"
     Value: !GetAtt ServerlessHttpApi.ApiEndpoint
   ListSessionFunctionArn:
     Description: ARN of the Lambda function
