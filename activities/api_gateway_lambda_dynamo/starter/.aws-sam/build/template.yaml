@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: "Semana 2 - OpenF1 + API Gateway + Lambda + DynamoDB (cach\xE9 de pilotos)"
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+      - GET
+      - OPTIONS
+      AllowHeaders:
+      - Content-Type
+      AllowOrigins:
+      - '*'
+Resources:
+  DriversCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: session_key
+        AttributeType: S
+      KeySchema:
+      - AttributeName: session_key
+        KeyType: HASH
+  F1DriversApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: F1DriversApiFunction
+      Environment:
+        Variables:
+          TABLE_NAME:
+            Ref: DriversCacheTable
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DriversCacheTable
+      Events:
+        GetDrivers:
+          Type: HttpApi
+          Properties:
+            Path: /drivers
+            Method: GET
+    Metadata:
+      SamResourceId: F1DriversApiFunction
+Outputs:
+  ApiEndpoint:
+    Description: "URL base del HTTP API (a\xF1ade /drivers?session_key=...)"
+    Value:
+      Fn::GetAtt:
+      - ServerlessHttpApi
+      - ApiEndpoint
+  DriversTableName:
+    Description: "Tabla DynamoDB con cach\xE9 por session_key"
+    Value:
+      Ref: DriversCacheTable
+  F1DriversApiFunctionArn:
+    Description: "ARN de la funci\xF3n Lambda"
+    Value:
+      Fn::GetAtt:
+      - F1DriversApiFunction
+      - Arn

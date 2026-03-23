@@ -1,0 +1,19 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /drivers",
+  "rawPath": "/drivers",
+  "rawQueryString": "session_key=9158",
+  "headers": {
+    "accept": "application/json"
+  },
+  "queryStringParameters": {
+    "session_key": "9158"
+  },
+  "requestContext": {
+    "http": {
+      "method": "GET",
+      "path": "/drivers"
+    }
+  },
+  "isBase64Encoded": false
+}
