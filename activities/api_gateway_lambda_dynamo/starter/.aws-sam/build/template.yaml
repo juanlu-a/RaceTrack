@@ -35,6 +35,7 @@ Resources:
         Variables:
           TABLE_NAME:
             Ref: DriversCacheTable
+          DYNAMODB_ENDPOINT_URL: ''
       Policies:
       - DynamoDBCrudPolicy:
           TableName:
@@ -44,6 +45,11 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /drivers
+            Method: GET
+        GetCache:
+          Type: HttpApi
+          Properties:
+            Path: /cache
             Method: GET
     Metadata:
       SamResourceId: F1DriversApiFunction

@@ -37,6 +37,9 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref DriversCacheTable
+          # Vacío en la nube (boto3 usa el endpoint regional). SAM local puede
+          # sobrescribir con env.json; si no está declarado aquí, a veces no se inyecta.
+          DYNAMODB_ENDPOINT_URL: ""
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DriversCacheTable
@@ -45,6 +48,11 @@ Resources:
           Type: HttpApi
           Properties:
             Path: /drivers
+            Method: GET
+        GetCache:
+          Type: HttpApi
+          Properties:
+            Path: /cache
             Method: GET
 
 Outputs:
