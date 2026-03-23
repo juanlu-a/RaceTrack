@@ -9,7 +9,20 @@ from datetime import datetime, timezone
 import boto3
 import requests
 
-dynamodb = boto3.resource("dynamodb")
+_endpoint = os.environ.get("DYNAMODB_ENDPOINT")
+if _endpoint:
+    # Local dev: hardcode dummy credentials so DynamoDB Local doesn't reject the
+    # expired/real SSO token that SAM injects into the container env vars.
+    dynamodb = boto3.resource(
+        "dynamodb",
+        endpoint_url=_endpoint,
+        aws_access_key_id="DUMMYIDEXAMPLE",
+        aws_secret_access_key="dummysecretkey",
+        aws_session_token=None,
+        region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"),
+    )
+else:
+    dynamodb = boto3.resource("dynamodb")
 
 # Variables de entorno (Lambda: template.yaml > Environment > Variables;
 # SAM local: env.json con la clave = ID lógico de la función, p. ej. F1DriversApiFunction)

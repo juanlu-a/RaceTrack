@@ -37,6 +37,7 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: !Ref DriversCacheTable
+          DYNAMODB_ENDPOINT: ""
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DriversCacheTable
