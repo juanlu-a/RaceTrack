@@ -1,9 +1,14 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Week 1 - Lambda Basics
 
 # TODO: Add a Globals section with default function settings
 # Hint: Runtime, Timeout, MemorySize
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
 
 Resources:
   # TODO: Define the StartSimulation Lambda function
@@ -13,13 +18,23 @@ Resources:
   #   CodeUri: .
   #   Environment Variables: SESSION_KEY
   #   Policies: basic Lambda execution
-
   StartSimulationFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handler.handler
       CodeUri: .
-      Runtime: python3.12
-      # TODO: Add Timeout, MemorySize
-      # TODO: Add Environment variables with SESSION_KEY
-      # TODO: Add Policies for Lambda execution
+      Environment:
+        Variables:
+          SESSION_KEY: "9158"
+      Policies:
+        - AWSLambdaBasicExecutionRole
+
+  # StartSimulationFunction:
+  #   Type: AWS::Serverless::Function
+  #   Properties:
+  #     Handler: handler.handler
+  #     CodeUri: .
+  #     Runtime: python3.12
+  # TODO: Add Timeout, MemorySize
+  # TODO: Add Environment variables with SESSION_KEY
+  # TODO: Add Policies for Lambda execution

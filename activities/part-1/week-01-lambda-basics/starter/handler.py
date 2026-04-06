@@ -16,24 +16,36 @@ Hints:
 """
 import json
 import os
+import requests
 
 
 def handler(event, context):
     # TODO: Read SESSION_KEY from environment variables
-    session_key = None
+    session_key = os.getenv("SESSION_KEY")
 
     # TODO: Validate that SESSION_KEY is set
     if not session_key:
-        pass  # Return 400 error
+        return {
+            "statusCode": 400,
+            "body": json.dumps({"error": "SESSION_KEY environment variable is required"})
+        },
+        # pass  # Return 400 error
 
     # TODO: Call the OpenF1 API to fetch session data
-    # URL: https://api.openf1.org/v1/sessions?session_key={session_key}
+    try:
+        response = requests.get(f"https://api.openf1.org/v1/sessions?session_key={session_key}")
+        response.raise_for_status()  # Raise an error for bad status codes
+    except requests.RequestException as e:
+        return {
+            "statusCode": 502,
+            "body": json.dumps({"error": f"Failed to fetch session data: {str(e)}"})
+        }
 
     # TODO: Parse the API response
+    session_data = response.json()
 
     # TODO: Return the session data as a Lambda response
-    # Format: {"statusCode": 200, "body": json.dumps({...})}
     return {
-        "statusCode": 501,
-        "body": json.dumps({"error": "Not implemented"}),
+        "statusCode": 200,
+        "body": json.dumps(session_data),
     }
