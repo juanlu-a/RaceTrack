@@ -1,0 +1,14 @@
+{
+  "version": "0",
+  "id": "abcd1234-0000-0000-0000-000000000001",
+  "source": "racetrack",
+  "account": "123456789012",
+  "time": "2024-01-01T00:00:00Z",
+  "region": "us-east-1",
+  "detail-type": "SessionIngested",
+  "detail": {
+    "bucket": "racetrack-sessions",
+    "key": "sessions/9158/raw.json",
+    "session_key": "9158"
+  }
+}
