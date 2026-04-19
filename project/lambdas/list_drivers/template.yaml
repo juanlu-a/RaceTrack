@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Semana 2 - OpenF1 + API Gateway + Lambda + DynamoDB (caché de pilotos)
+Description: list_drivers — returns drivers for a session from RDS
 
 Globals:
   Function:
@@ -17,18 +17,25 @@ Globals:
       AllowOrigins:
         - "*"
 
-Resources:
-  DriversCacheTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: session_key
-          AttributeType: S
-      KeySchema:
-        - AttributeName: session_key
-          KeyType: HASH
+Parameters:
+  DbHost:
+    Type: String
+    Default: localhost
+  DbPort:
+    Type: String
+    Default: "5432"
+  DbName:
+    Type: String
+    Default: racetrack
+  DbUser:
+    Type: String
+    Default: racetrack
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Default: racetrack
 
+Resources:
   F1DriversApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -36,35 +43,22 @@ Resources:
       CodeUri: .
       Environment:
         Variables:
-          TABLE_NAME: !Ref DriversCacheTable
-          DYNAMODB_ENDPOINT: ""
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref DriversCacheTable
+          DB_HOST: !Ref DbHost
+          DB_PORT: !Ref DbPort
+          DB_NAME: !Ref DbName
+          DB_USER: !Ref DbUser
+          DB_PASSWORD: !Ref DbPassword
       Events:
-        GetList:
-          Type: HttpApi
-          Properties:
-            Path: /list
-            Method: GET
         GetDrivers:
           Type: HttpApi
           Properties:
             Path: /drivers
             Method: GET
-        GetCache:
-          Type: HttpApi
-          Properties:
-            Path: /cache
-            Method: GET
 
 Outputs:
   ApiEndpoint:
-    Description: "Base URL — use /drivers?session_key=... to import, /cache?session_key=... to read"
+    Description: "Base URL — use GET /drivers?session_key=..."
     Value: !GetAtt ServerlessHttpApi.ApiEndpoint
-  DriversTableName:
-    Description: Tabla DynamoDB con caché por session_key
-    Value: !Ref DriversCacheTable
   F1DriversApiFunctionArn:
-    Description: ARN de la función Lambda
+    Description: ARN of the Lambda function
     Value: !GetAtt F1DriversApiFunction.Arn

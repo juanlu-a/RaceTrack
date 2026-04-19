@@ -1,28 +1,18 @@
 """
 Lambda for API Gateway (HTTP API):
-  GET /sessions[?year=...]  -> Returns all F1 sessions from OpenF1
+  GET /sessions[?year=...]  → Returns sessions from RDS (previously ingested via ingest_session)
 """
 import json
+import os
 
-import requests
+import psycopg2
+import psycopg2.extras
 
-OPENF1_SESSIONS_URL = "https://api.openf1.org/v1/sessions"
-SESSION_FIELDS = [
-    "circuit_key",
-    "circuit_short_name",
-    "country_code",
-    "country_key",
-    "country_name",
-    "date_end",
-    "date_start",
-    "gmt_offset",
-    "location",
-    "meeting_key",
-    "session_key",
-    "session_name",
-    "session_type",
-    "year",
-]
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = int(os.environ.get("DB_PORT", 5432))
+DB_NAME = os.environ.get("DB_NAME", "racetrack")
+DB_USER = os.environ.get("DB_USER", "racetrack")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "racetrack")
 
 
 def _json_response(status_code: int, body: dict) -> dict:
@@ -37,8 +27,10 @@ def _extract_method(event: dict) -> str:
     return (event.get("requestContext", {}).get("http", {}).get("method") or "").upper()
 
 
-def _normalize_session(item: dict) -> dict:
-    return {field: item.get(field) for field in SESSION_FIELDS}
+def _get_conn():
+    return psycopg2.connect(
+        host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+    )
 
 
 def handler(event, context):
@@ -54,29 +46,27 @@ def handler(event, context):
             "example": "?year=2023",
         })
 
-    url = f"{OPENF1_SESSIONS_URL}?year={year}" if year else OPENF1_SESSIONS_URL
     try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-    except requests.exceptions.Timeout:
-        return _json_response(502, {"error": "OpenF1 API timeout"})
-    except requests.exceptions.RequestException as e:
-        return _json_response(502, {"error": "Failed to call OpenF1 API", "details": str(e)})
-    except ValueError:
-        return _json_response(502, {"error": "OpenF1 returned invalid JSON"})
+        conn = _get_conn()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            if year:
+                cur.execute(
+                    "SELECT * FROM sessions WHERE year = %s ORDER BY date_start", (int(year),)
+                )
+            else:
+                cur.execute("SELECT * FROM sessions ORDER BY date_start")
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        return _json_response(500, {"error": "Failed to query RDS", "details": str(e)})
 
-    if not isinstance(data, list):
-        return _json_response(502, {"error": "Unexpected response from OpenF1 API"})
-    if year and len(data) == 0:
+    sessions = [dict(r) for r in rows]
+
+    if year and not sessions:
         return _json_response(404, {"error": f"No sessions found for year '{year}'"})
 
-    sessions = [_normalize_session(s) for s in data if isinstance(s, dict)]
-    return _json_response(
-        200,
-        {
-            "count": len(sessions),
-            "year": int(year) if year else None,
-            "sessions": sessions,
-        },
-    )
+    return _json_response(200, {
+        "count": len(sessions),
+        "year": int(year) if year else None,
+        "sessions": sessions,
+    })
