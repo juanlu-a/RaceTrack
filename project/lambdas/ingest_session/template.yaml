@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: ingest_session — bulk fetch from OpenF1, save to S3, fire EventBridge
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 60
+    MemorySize: 256
+  HttpApi:
+    CorsConfiguration:
+      AllowMethods:
+        - GET
+        - OPTIONS
+      AllowHeaders:
+        - Content-Type
+      AllowOrigins:
+        - "*"
+
+Resources:
+  SessionsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: racetrack-sessions
+
+  IngestSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref SessionsBucket
+          S3_ENDPOINT: ""
+          EVENTS_ENDPOINT: ""
+          AWS_DEFAULT_REGION: !Ref AWS::Region
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref SessionsBucket
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
+      Events:
+        IngestSession:
+          Type: HttpApi
+          Properties:
+            Path: /ingest
+            Method: GET
+
+Outputs:
+  ApiEndpoint:
+    Description: "Base URL — use GET /ingest?session_key=..."
+    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
+  IngestSessionFunctionArn:
+    Description: ARN of the Lambda function
+    Value: !GetAtt IngestSessionFunction.Arn
+  SessionsBucketName:
+    Description: S3 bucket for raw session data
+    Value: !Ref SessionsBucket
