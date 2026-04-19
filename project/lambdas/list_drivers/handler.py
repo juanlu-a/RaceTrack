@@ -1,32 +1,18 @@
 """
 Lambda for API Gateway (HTTP API):
-  GET /list?session_key=...     → Fetches from OpenF1 and returns the list (no DB touch)
-  GET /drivers?session_key=...  → Fetches from OpenF1 and saves to DynamoDB
-  GET /cache?session_key=...    → Reads from DynamoDB what was previously saved
+  GET /drivers?session_key=...  → Returns drivers for a session from RDS
 """
 import json
 import os
-from datetime import datetime, timezone
 
-import boto3
-import requests
+import psycopg2
+import psycopg2.extras
 
-_endpoint = os.environ.get("DYNAMODB_ENDPOINT")
-if _endpoint:
-    # Local dev: hardcode dummy credentials so DynamoDB Local doesn't reject the
-    # expired/real SSO token that SAM injects into the container env vars.
-    dynamodb = boto3.resource(
-        "dynamodb",
-        endpoint_url=_endpoint,
-        aws_access_key_id="DUMMYIDEXAMPLE",
-        aws_secret_access_key="dummysecretkey",
-        aws_session_token=None,
-        region_name=os.environ.get("AWS_DEFAULT_REGION", "us-east-2"),
-    )
-else:
-    dynamodb = boto3.resource("dynamodb")
-
-TABLE_NAME = os.environ.get("TABLE_NAME")
+DB_HOST = os.environ.get("DB_HOST", "localhost")
+DB_PORT = int(os.environ.get("DB_PORT", 5432))
+DB_NAME = os.environ.get("DB_NAME", "racetrack")
+DB_USER = os.environ.get("DB_USER", "racetrack")
+DB_PASSWORD = os.environ.get("DB_PASSWORD", "racetrack")
 
 
 def _json_response(status_code: int, body: dict) -> dict:
@@ -37,120 +23,51 @@ def _json_response(status_code: int, body: dict) -> dict:
     }
 
 
-def _get_session_key(event: dict) -> str:
-    params = event.get("queryStringParameters") or {}
-    return (params.get("session_key") or "").strip()
-
-
-def _normalize_drivers(raw: list) -> list:
-    return [
-        {
-            "pilotName": driver.get("full_name"),
-            "pilotNumber": driver.get("driver_number"),
-            "pilotTeam": driver.get("team_name"),
-            "pilotCountry": driver.get("country_code"),
-        }
-        for driver in raw
-    ]
-
-
-def _list_drivers(session_key: str) -> dict:
-    """Fetch from OpenF1 and return the list — no DynamoDB interaction."""
-    url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
-    try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-    except requests.exceptions.RequestException as e:
-        return _json_response(502, {"error": "Failed to call OpenF1 API", "details": str(e)})
-
-    if not isinstance(data, list):
-        return _json_response(502, {"error": "Unexpected response from OpenF1"})
-
-    pilots = _normalize_drivers(data)
-    return _json_response(200, {
-        "sessionKey": session_key,
-        "pilotCount": len(pilots),
-        "pilots": pilots,
-    })
-
-
-def _import_drivers(session_key: str) -> dict:
-    """Always fetch from OpenF1, save to DynamoDB, return import result."""
-    if not TABLE_NAME:
-        return _json_response(500, {"error": "TABLE_NAME is not configured"})
-    url = f"https://api.openf1.org/v1/drivers?session_key={session_key}"
-    try:
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-    except requests.exceptions.RequestException as e:
-        return _json_response(502, {"error": "Failed to call OpenF1 API", "details": str(e)})
-
-    if not isinstance(data, list):
-        return _json_response(502, {"error": "Unexpected response from OpenF1"})
-
-    pilots = _normalize_drivers(data)
-    now = datetime.now(timezone.utc).isoformat()
-
-    try:
-        dynamodb.Table(TABLE_NAME).put_item(Item={
-            "session_key": session_key,
-            "pilots": pilots,
-            "pilot_count": len(pilots),
-            "saved_at": now,
-        })
-    except Exception as e:
-        return _json_response(500, {"error": "Error writing to DynamoDB", "details": str(e)})
-
-    return _json_response(200, {
-        "message": "Data imported successfully",
-        "sessionKey": session_key,
-        "pilotCount": len(pilots),
-        "pilots": pilots,
-        "savedAt": now,
-    })
-
-
-def _get_from_cache(session_key: str) -> dict:
-    """Read session data from DynamoDB."""
-    if not TABLE_NAME:
-        return _json_response(500, {"error": "TABLE_NAME is not configured"})
-    try:
-        resp = dynamodb.Table(TABLE_NAME).get_item(Key={"session_key": session_key})
-    except Exception as e:
-        return _json_response(500, {"error": "Error reading DynamoDB", "details": str(e)})
-
-    if "Item" not in resp:
-        return _json_response(404, {
-            "error": f"No data found for session_key '{session_key}'",
-            "hint": f"Call GET /drivers?session_key={session_key} first to import the data",
-        })
-
-    item = resp["Item"]
-    return _json_response(200, {
-        "sessionKey": session_key,
-        "pilots": item.get("pilots", []),
-        "pilotCount": int(item.get("pilot_count", 0)),
-        "savedAt": item.get("saved_at"),
-    })
+def _get_conn():
+    return psycopg2.connect(
+        host=DB_HOST, port=DB_PORT, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD,
+    )
 
 
 def handler(event, context):
-    session_key = _get_session_key(event)
+    params = event.get("queryStringParameters") or {}
+    session_key = (params.get("session_key") or "").strip()
     if not session_key:
         return _json_response(400, {
             "error": "Missing query parameter: session_key",
-            "example": "?session_key=9159",
+            "example": "?session_key=9158",
         })
 
-    route = event.get("routeKey", "")
+    try:
+        conn = _get_conn()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM drivers WHERE session_key = %s ORDER BY driver_number",
+                (session_key,),
+            )
+            rows = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        return _json_response(500, {"error": "Failed to query RDS", "details": str(e)})
 
-    if "GET /list" in route:
-        return _list_drivers(session_key)
-    elif "GET /drivers" in route:
-        return _import_drivers(session_key)
-    elif "GET /cache" in route:
-        return _get_from_cache(session_key)
-    else:
-        return _json_response(404, {"error": f"Unknown route: {route}"})
+    if not rows:
+        return _json_response(404, {
+            "error": f"No drivers found for session_key '{session_key}'",
+            "hint": f"Run GET /ingest?session_key={session_key} first",
+        })
+
+    pilots = [
+        {
+            "pilotName": r["full_name"],
+            "pilotNumber": r["driver_number"],
+            "pilotTeam": r["team_name"],
+            "pilotCountry": r["country_code"],
+        }
+        for r in rows
+    ]
+
+    return _json_response(200, {
+        "sessionKey": session_key,
+        "pilotCount": len(pilots),
+        "pilots": pilots,
+    })
