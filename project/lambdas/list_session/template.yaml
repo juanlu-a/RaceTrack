@@ -1,21 +1,14 @@
+# Individual function definition (for reference only).
+# The API Gateway and deployment are managed by project/template.yaml.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: list_session - returns OpenF1 sessions (all or by year)
+Description: list_session — returns sessions from RDS
 
 Globals:
   Function:
     Runtime: python3.9
     Timeout: 30
     MemorySize: 256
-  HttpApi:
-    CorsConfiguration:
-      AllowMethods:
-        - GET
-        - OPTIONS
-      AllowHeaders:
-        - Content-Type
-      AllowOrigins:
-        - "*"
 
 Resources:
   ListSessionFunction:
@@ -23,17 +16,10 @@ Resources:
     Properties:
       Handler: handler.handler
       CodeUri: .
-      Events:
-        ListSession:
-          Type: HttpApi
-          Properties:
-            Path: /sessions
-            Method: GET
-
-Outputs:
-  ApiEndpoint:
-    Description: "Base URL - use GET /sessions or /sessions?year=2023"
-    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
-  ListSessionFunctionArn:
-    Description: ARN of the Lambda function
-    Value: !GetAtt ListSessionFunction.Arn
+      Environment:
+        Variables:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: racetrack
+          DB_USER: racetrack
+          DB_PASSWORD: racetrack
