@@ -49,37 +49,58 @@ project/
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
+- AWS CLI (`brew install awscli`)
+- `make`
 - AWS CLI configured with the `um_aws` profile
 
 > **AWS profile note (important for Juanlu):** The default profile is the SSO work account, which expires. Always pass `--profile um_aws` to every `sam` command.
 
 ---
 
-## Step 0 — Start Local Infrastructure
+## Local Flow — How It Works
+
+```
+sam local invoke IngestSessionFunction
+        │
+        ├─ calls OpenF1 API
+        ├─ saves raw JSON to LocalStack S3
+        └─ fires event to LocalStack EventBridge
+                │
+                └─ EventBridge rule → triggers SaveSessionFunction (running inside LocalStack)
+                        │
+                        ├─ reads JSON from LocalStack S3
+                        └─ writes sessions/drivers/laps to Postgres
+```
+
+`save_session` runs **inside LocalStack** (not via `sam local invoke`) so EventBridge can trigger it automatically — exactly like production.
+
+---
+
+## Step 0 — Bootstrap (first time only)
+
+Run everything at once from `project/`:
 
 ```bash
 cd project/
-docker compose up -d
+make all
 ```
 
-This starts:
-- **LocalStack** on `http://localhost:4566` — S3 and EventBridge
-- **PostgreSQL 15** on `localhost:5432` — database `racetrack`, user/password `racetrack`
+This does in order:
+1. `sam build` — compiles all lambdas and installs dependencies
+2. `docker compose up -d` — starts LocalStack (S3 + EventBridge + Lambda) and Postgres
+3. `./scripts/setup_localstack.sh` — deploys `SaveSessionFunction` into LocalStack and creates the EventBridge rule → Lambda target
 
-Verify both containers are healthy:
+Verify all containers are healthy:
 ```bash
 docker compose ps
 ```
 
----
+### After code changes to save_session
 
-## Step 0b — Build all lambdas (run once, or after code changes)
-
-All commands below run from the `project/` directory using the unified template.
+Re-run build + setup to redeploy the Lambda in LocalStack:
 
 ```bash
-cd project/
-sam build --profile um_aws
+make build setup
 ```
 
 ---
@@ -119,31 +140,21 @@ To use a different session, edit `lambdas/ingest_session/events/event.json` and 
 
 ---
 
-### Step 1b — Save to RDS
+### Step 1b — Save to RDS (automatic via EventBridge)
 
-In production EventBridge triggers this automatically. For local testing, invoke it directly after Step 1:
+After Step 1, LocalStack EventBridge automatically triggers `SaveSessionFunction` (which runs inside LocalStack). You don't need to invoke it manually.
 
+To check it ran, look at the LocalStack logs:
 ```bash
-sam local invoke SaveSessionFunction \
-  --event lambdas/save_session/events/event.json \
-  --env-vars env.json \
-  --profile um_aws
+docker compose logs localstack --tail=30
 ```
 
-> `lambdas/save_session/events/event.json` simulates the EventBridge payload. If you changed the session key, update the `key` field to `sessions/YOUR_KEY/raw.json`.
+You should see Lambda invocation logs there.
 
-**Expected response:**
-```json
-{
-  "statusCode": 200,
-  "body": {
-    "message": "Session saved to RDS successfully",
-    "session_key": "9158",
-    "drivers_saved": 20,
-    "laps_saved": 1240
-  }
-}
-```
+> **Manual fallback:** If you need to trigger it manually (e.g. for debugging):
+> ```bash
+> make invoke-save
+> ```
 
 Tables (`sessions`, `drivers`, `laps`) are created automatically on first run.
 
@@ -304,27 +315,30 @@ sam local invoke DriverLapsFunction \
 ## Quick Reference
 
 ```bash
-# Start infra
-cd project/ && docker compose up -d
+# First-time bootstrap (build + start infra + wire EventBridge)
+cd project/ && make all
 
-# Build all (once)
-sam build --profile um_aws
+# After code changes to save_session only
+make build setup
 
-# Step 1 — Ingest
-sam local invoke IngestSessionFunction --event lambdas/ingest_session/events/event.json --env-vars env.json --profile um_aws
-
-# Step 1b — Persist to RDS
-sam local invoke SaveSessionFunction --event lambdas/save_session/events/event.json --env-vars env.json --profile um_aws
+# Step 1 — Ingest (EventBridge auto-triggers save_session)
+make invoke-ingest
 
 # Step 2 — List sessions
-sam local invoke ListSessionFunction --event lambdas/list_session/events/event.json --env-vars env.json --profile um_aws
+make invoke-sessions
 
 # Step 3 — List drivers
-sam local invoke ListDriversFunction --event lambdas/list_drivers/events/event.json --env-vars env.json --profile um_aws
+make invoke-drivers
 
 # Step 4 — Driver summary
-sam local invoke DriverSummaryFunction --event lambdas/driver_summary/events/event.json --env-vars env.json --profile um_aws
+make invoke-summary
 
 # Step 5 — Driver laps
-sam local invoke DriverLapsFunction --event lambdas/driver_laps/events/event.json --env-vars env.json --profile um_aws
+make invoke-laps
+
+# Check LocalStack logs (to verify EventBridge triggered save_session)
+docker compose logs localstack --tail=30
+
+# Stop all infra
+make stop
 ```
