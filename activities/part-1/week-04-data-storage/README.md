@@ -19,9 +19,11 @@
 ## Steps
 
 ### 1. Set up CDK project
+From the `RaceTrack` repo root:
 ```bash
-cd infra/cdk
-pip install aws-cdk-lib constructs
+cd activities/part-1/week-04-data-storage/cdk
+python3 -m pip install -r requirements.txt
+npx aws-cdk@2 synth
 ```
 
 ### 2. Create DataStack
@@ -39,12 +41,48 @@ Use `AWS_ENDPOINT_URL` environment variable for LocalStack compatibility.
 ### 4. Create MessagingStack
 Define EventBridge rule that triggers every 5 seconds (disabled by default).
 
-### 5. Test with LocalStack
+### 5. Test with LocalStack (this repo)
+This repository has no `localstack/` folder and no `Makefile` under `week-04-data-storage`. LocalStack is started from **`project/`**:
+
 ```bash
-cd localstack && make start && make init
-export AWS_ENDPOINT_URL=http://localhost:4566
-python -c "from repositories.session_repo import SessionRepository; print('OK')"
+cd project
+make start
 ```
+
+(See `project/HOWTO.md` for the full flow, e.g. `make all` after SAM is configured.)
+
+Environment variables for boto3 against LocalStack:
+
+```bash
+export AWS_ENDPOINT_URL=http://localhost:4566
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+```
+
+Install repositories and verify the import. The path to `starter` depends on **your current directory**:
+
+From the **repo root** `RaceTrack`:
+
+```bash
+python3 -m pip install -e activities/part-1/week-04-data-storage/starter
+```
+
+From **`project/`** (where `make start` lives), go up one level:
+
+```bash
+python3 -m pip install -e ../activities/part-1/week-04-data-storage/starter
+```
+
+Then:
+
+```bash
+python3 -c "from repositories.session_repo import SessionRepository; print('OK')"
+```
+
+Do not paste markdown **triple backtick** fences into the shell; in zsh you may get a `bquote>` prompt. Type only the `export ...` lines without markdown.
+
+For real DynamoDB calls in LocalStack, create the tables first (deploy `DataStack` to LocalStack or use the AWS CLI with `--endpoint-url`).
 
 ## Key Concepts
 - **CDK vs SAM**: CDK uses real programming languages, SAM uses YAML templates

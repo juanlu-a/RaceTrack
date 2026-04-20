@@ -1,0 +1,96 @@
+{
+  "/RaceTrackDataStack/F1Sessions": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "F1SessionsBAA037FB"
+      }
+    }
+  ],
+  "/RaceTrackDataStack/F1DriverStats": [
+    {
+      "type": "aws:cdk:hasPhysicalName",
+      "data": {
+        "Ref": "F1DriverStats63BD838F"
+      }
+    }
+  ],
+  "/RaceTrackDataStack/Custom::S3AutoDeleteObjectsCustomResourceProvider": [
+    {
+      "type": "aws:cdk:is-custom-resource-handler-customResourceProvider",
+      "data": true
+    }
+  ],
+  "/RaceTrackDataStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/RaceTrackDataStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/RaceTrackDataStack/F1Sessions/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "F1SessionsBAA037FB"
+    }
+  ],
+  "/RaceTrackDataStack/F1DriverStats/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "F1DriverStats63BD838F"
+    }
+  ],
+  "/RaceTrackDataStack/F1RawData/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "F1RawData113DCBC0"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketAutoDeleteObjects"
+      }
+    }
+  ],
+  "/RaceTrackDataStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Role": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092"
+    }
+  ],
+  "/RaceTrackDataStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F"
+    }
+  ],
+  "/RaceTrackDataStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ],
+  "/RaceTrackDataStack/F1RawData/Policy/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "F1RawDataPolicy55892F03"
+    },
+    {
+      "type": "aws:cdk:analytics:mixin",
+      "data": {
+        "mixin": "aws-cdk-lib.aws_s3.mixins.BucketPolicyStatements"
+      }
+    }
+  ],
+  "/RaceTrackDataStack/F1RawData/AutoDeleteObjectsCustomResource/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "F1RawDataAutoDeleteObjectsCustomResource17937137"
+    }
+  ]
+}

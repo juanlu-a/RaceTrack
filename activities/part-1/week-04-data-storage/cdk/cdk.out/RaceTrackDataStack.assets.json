@@ -1,0 +1,36 @@
+{
+  "version": "53.0.0",
+  "files": {
+    "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6": {
+      "displayName": "RaceTrackDataStack/Custom::S3AutoDeleteObjectsCustomResourceProvider Code",
+      "source": {
+        "path": "asset.faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6",
+        "packaging": "zip"
+      },
+      "destinations": {
+        "764042516108-us-east-1-e7f62397": {
+          "bucketName": "cdk-hnb659fds-assets-764042516108-us-east-1",
+          "objectKey": "faa95a81ae7d7373f3e1f242268f904eb748d8d0fdd306e8a6fe515a1905a7d6.zip",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::764042516108:role/cdk-hnb659fds-file-publishing-role-764042516108-us-east-1"
+        }
+      }
+    },
+    "8a0a931d280d2e4260d94d5202d133ae0683050fed448f4dd510bb1ebe55cd40": {
+      "displayName": "RaceTrackDataStack Template",
+      "source": {
+        "path": "RaceTrackDataStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "764042516108-us-east-1-7b6341e1": {
+          "bucketName": "cdk-hnb659fds-assets-764042516108-us-east-1",
+          "objectKey": "8a0a931d280d2e4260d94d5202d133ae0683050fed448f4dd510bb1ebe55cd40.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::764042516108:role/cdk-hnb659fds-file-publishing-role-764042516108-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}
