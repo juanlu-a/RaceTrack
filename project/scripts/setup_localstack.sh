@@ -8,8 +8,10 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-# Use the personal AWS profile — the default SSO work profile expires.
-export AWS_PROFILE=um_aws
+# AWS_PROFILE is passed in from the Makefile (via  make setup PROFILE=um_aws).
+# If not set, the AWS CLI uses whatever the default profile is — correct for
+# most teammates. Juanlu runs: make all PROFILE=um_aws
+export AWS_PROFILE="${AWS_PROFILE:-}"
 
 ENDPOINT="http://localhost:4566"
 REGION="us-east-1"
