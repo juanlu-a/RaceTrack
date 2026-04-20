@@ -1,4 +1,4 @@
-.PHONY: build start stop setup all invoke-ingest invoke-save invoke-sessions invoke-drivers invoke-summary invoke-laps
+.PHONY: build start stop setup all start-api invoke-ingest invoke-save invoke-sessions invoke-drivers invoke-summary invoke-laps
 
 # AWS profile — leave empty to use the default profile (works for most teammates).
 # Juanlu: run make with PROFILE=um_aws  e.g.  make all PROFILE=um_aws
@@ -30,6 +30,17 @@ all: build start
 	@echo "Waiting for services to be ready..."
 	@sleep 8
 	@$(MAKE) setup PROFILE=$(PROFILE)
+
+# ── Local API server (Postman / curl) ────────────────────────────────────────
+# Starts HTTP server on http://localhost:3000 with all routes from template.yaml
+# Teammates:  make start-api
+# Juanlu:     make start-api PROFILE=um_aws
+
+start-api:
+	sam local start-api \
+		--env-vars env.json \
+		--port 3000 \
+		$(PROFILE_FLAG)
 
 # ── Individual lambda invocations ─────────────────────────────────────────────
 
