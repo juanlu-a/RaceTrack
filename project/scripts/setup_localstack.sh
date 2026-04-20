@@ -8,6 +8,9 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
+# Use the personal AWS profile — the default SSO work profile expires.
+export AWS_PROFILE=um_aws
+
 ENDPOINT="http://localhost:4566"
 REGION="us-east-1"
 ACCOUNT="000000000000"
