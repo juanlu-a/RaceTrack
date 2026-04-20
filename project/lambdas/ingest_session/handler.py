@@ -134,8 +134,6 @@ def handler(event, context):
     return _json_response(200, {
         "message": "Session ingested successfully",
         "session_key": session_key,
-        "s3_bucket": S3_BUCKET,
-        "s3_key": s3_key,
         "drivers_fetched": len(drivers),
         "laps_fetched": len(laps),
     })
