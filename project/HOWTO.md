@@ -302,6 +302,93 @@ sam local invoke DriverLapsFunction \
 
 ---
 
+## Testing with Postman (or curl)
+
+### Start the local API server
+
+Make sure `docker compose` is already running, then from `project/`:
+
+```bash
+make start-api                   # teammates
+make start-api PROFILE=um_aws   # Juanlu only
+```
+
+This starts an HTTP server on **`http://localhost:3000`** that routes every request to the matching Lambda function, just like API Gateway would in production.
+
+> Keep this terminal open. Each request spins up a Lambda container — you'll see the logs inline.
+
+---
+
+### Endpoints
+
+| Step | Method | URL | Required params |
+|---|---|---|---|
+| 1 | GET | `http://localhost:3000/ingest` | `session_key` |
+| 2 | GET | `http://localhost:3000/sessions` | *(none)* / `year` |
+| 3 | GET | `http://localhost:3000/drivers` | `session_key` |
+| 4 | GET | `http://localhost:3000/driver-summary` | `session_key`, `driver_number` |
+| 5 | GET | `http://localhost:3000/driver-laps` | `session_key`, `driver_number` |
+
+---
+
+### Postman setup
+
+1. Create a new collection called **RaceTrack Local**
+2. Set a collection variable `base_url = http://localhost:3000`
+3. Add one request per endpoint:
+
+**Step 1 — Ingest session**
+```
+GET {{base_url}}/ingest?session_key=9158
+```
+
+**Step 2 — List sessions**
+```
+GET {{base_url}}/sessions
+GET {{base_url}}/sessions?year=2024
+```
+
+**Step 3 — List drivers**
+```
+GET {{base_url}}/drivers?session_key=9158
+```
+
+**Step 4 — Driver summary**
+```
+GET {{base_url}}/driver-summary?session_key=9158&driver_number=1
+```
+
+**Step 5 — Driver laps**
+```
+GET {{base_url}}/driver-laps?session_key=9158&driver_number=1
+```
+
+---
+
+### curl equivalents
+
+```bash
+# Step 1 — ingest (run once)
+curl "http://localhost:3000/ingest?session_key=9158"
+
+# Step 2 — list sessions
+curl "http://localhost:3000/sessions"
+curl "http://localhost:3000/sessions?year=2024"
+
+# Step 3 — list drivers
+curl "http://localhost:3000/drivers?session_key=9158"
+
+# Step 4 — driver summary
+curl "http://localhost:3000/driver-summary?session_key=9158&driver_number=1"
+
+# Step 5 — driver laps
+curl "http://localhost:3000/driver-laps?session_key=9158&driver_number=1"
+```
+
+> **Remember:** Hit `/ingest` first (Step 1). After that, EventBridge triggers `save_session` in LocalStack automatically and all other endpoints will return data.
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -317,32 +404,28 @@ sam local invoke DriverLapsFunction \
 ## Quick Reference
 
 ```bash
-# First-time bootstrap (build + start infra + wire EventBridge)
 cd project/
-make all                   # teammates
-make all PROFILE=um_aws    # Juanlu only
 
-# After code changes to save_session only
-make build setup
+# ── First-time bootstrap ──────────────────────────────────────────────────────
+make all                    # teammates
+make all PROFILE=um_aws     # Juanlu only
 
-# Step 1 — Ingest (EventBridge auto-triggers save_session)
-make invoke-ingest
+# ── Start local API (Postman / curl on http://localhost:3000) ─────────────────
+make start-api              # teammates
+make start-api PROFILE=um_aws  # Juanlu only
 
-# Step 2 — List sessions
-make invoke-sessions
+# ── After code changes to save_session ────────────────────────────────────────
+make build setup            # teammates
+make build setup PROFILE=um_aws  # Juanlu only
 
-# Step 3 — List drivers
-make invoke-drivers
+# ── One-off lambda invocations (no HTTP server needed) ────────────────────────
+make invoke-ingest PROFILE=um_aws
+make invoke-sessions PROFILE=um_aws
+make invoke-drivers PROFILE=um_aws
+make invoke-summary PROFILE=um_aws
+make invoke-laps PROFILE=um_aws
 
-# Step 4 — Driver summary
-make invoke-summary
-
-# Step 5 — Driver laps
-make invoke-laps
-
-# Check LocalStack logs (to verify EventBridge triggered save_session)
-docker compose logs localstack --tail=30
-
-# Stop all infra
-make stop
+# ── Logs & infra ──────────────────────────────────────────────────────────────
+docker compose logs localstack --tail=30   # check EventBridge → save_session
+make stop                                  # tear down containers
 ```
