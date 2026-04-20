@@ -1,3 +1,5 @@
+# Individual function definition (for reference only).
+# The EventBridge rule and deployment are managed by project/template.yaml.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: save_session — EventBridge trigger, parse S3 payload and persist to RDS
@@ -46,17 +48,3 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref S3BucketName
-      Events:
-        SessionIngested:
-          Type: EventBridgeRule
-          Properties:
-            Pattern:
-              source:
-                - racetrack
-              detail-type:
-                - SessionIngested
-
-Outputs:
-  SaveSessionFunctionArn:
-    Description: ARN of the Lambda function
-    Value: !GetAtt SaveSessionFunction.Arn

@@ -7,75 +7,98 @@ This guide explains how to run the complete F1 data pipeline locally using SAM C
 ## Architecture Overview
 
 ```
-┌─────────────┐     ┌──────────────────┐     ┌────┐     ┌──────────────┐     ┌─────┐
-│  API Gateway│────▶│  ingest_session  │────▶│ S3 │────▶│ EventBridge  │────▶│save_│
-└─────────────┘     └──────────────────┘     └────┘     └──────────────┘     │sess.│
-       │                                                                       └──┬──┘
-       │                                                                          │ RDS
-       │                                                                          ▼
-       │             ┌──────────────────┐                               ┌─────────────────┐
-       ├────────────▶│  list_session    │◀──────────────────────────────│    PostgreSQL    │
-       ├────────────▶│  list_drivers    │◀──────────────────────────────│  sessions table │
-       ├────────────▶│  driver_summary  │◀──────────────────────────────│  drivers table  │
-       └────────────▶│  driver_laps     │◀──────────────────────────────│  laps table     │
-                     └──────────────────┘                               └─────────────────┘
+┌─────────────┐     ┌──────────────────┐     ┌────┐     ┌──────────────┐     ┌──────────────┐
+│  API Gateway│────▶│  ingest_session  │────▶│ S3 │────▶│ EventBridge  │────▶│ save_session │
+└─────────────┘     └──────────────────┘     └────┘     └──────────────┘     └──────┬───────┘
+       │                                                                              │ RDS
+       │                                                                              ▼
+       │             ┌──────────────────┐                               ┌─────────────────────┐
+       ├────────────▶│  list_session    │◀──────────────────────────────│      PostgreSQL      │
+       ├────────────▶│  list_drivers    │◀──────────────────────────────│   sessions  table   │
+       ├────────────▶│  driver_summary  │◀──────────────────────────────│   drivers   table   │
+       └────────────▶│  driver_laps     │◀──────────────────────────────│   laps      table   │
+                     └──────────────────┘                               └─────────────────────┘
 ```
 
-**Key principle:** `ingest_session` is run **once** per F1 session. It pulls everything from the [OpenF1 API](https://openf1.org/) (session metadata, all drivers, all lap data) and saves it to S3 and then to PostgreSQL. Every other lambda only reads from the database.
+**All lambdas share one API Gateway**, defined in `project/template.yaml`.
+
+**Key principle:** Run `ingest_session` **once** per F1 session. It pulls everything from [OpenF1](https://openf1.org/) (session metadata, all drivers, all lap data) and persists it to S3 + PostgreSQL. Every other lambda reads exclusively from the database — no further OpenF1 calls.
+
+---
+
+## Project Structure
+
+```
+project/
+├── template.yaml          ← Unified SAM template (one API GW, all lambdas)
+├── env.json               ← Local env vars for all functions (LocalStack + Postgres)
+├── docker-compose.yml     ← Local infra: LocalStack (S3+EventBridge) + PostgreSQL
+├── HOWTO.md               ← This file
+└── lambdas/
+    ├── ingest_session/    ← Step 1a: fetch from OpenF1, save to S3
+    ├── save_session/      ← Step 1b: EventBridge → write to RDS
+    ├── list_session/      ← Step 2: GET /sessions
+    ├── list_drivers/      ← Step 3: GET /drivers
+    ├── driver_summary/    ← Step 4: GET /driver-summary
+    └── driver_laps/       ← Step 5: GET /driver-laps
+```
 
 ---
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for LocalStack + Postgres)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)
 - AWS CLI configured with the `um_aws` profile
 
-> **AWS profile note (important for Juanlu):** The default AWS profile on this machine is the SSO work account, which expires. Always use `--profile um_aws` in every `sam` command to avoid credential errors.
+> **AWS profile note (important for Juanlu):** The default profile is the SSO work account, which expires. Always pass `--profile um_aws` to every `sam` command.
 
 ---
 
 ## Step 0 — Start Local Infrastructure
 
-All local AWS services (S3, EventBridge) run inside LocalStack. PostgreSQL mimics RDS.
-
 ```bash
-# From the project/ directory
 cd project/
 docker compose up -d
 ```
 
 This starts:
-- **LocalStack** on `http://localhost:4566` — provides S3 and EventBridge
+- **LocalStack** on `http://localhost:4566` — S3 and EventBridge
 - **PostgreSQL 15** on `localhost:5432` — database `racetrack`, user/password `racetrack`
 
-Wait until both containers report healthy:
-
+Verify both containers are healthy:
 ```bash
 docker compose ps
 ```
 
 ---
 
-## Step 1 — Ingest a Session
+## Step 0b — Build all lambdas (run once, or after code changes)
 
-> **Run this once per session.** It fetches all data from OpenF1 and saves it to S3 and RDS.
+All commands below run from the `project/` directory using the unified template.
 
 ```bash
-cd project/lambdas/ingest_session
-sam build
+cd project/
+sam build --profile um_aws
+```
+
+---
+
+## Step 1 — Ingest a Session
+
+> Run this **once per session key**. It fetches everything from OpenF1 and saves to S3 + RDS.
+
+```bash
 sam local invoke IngestSessionFunction \
-  --event events/event.json \
+  --event lambdas/ingest_session/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
 
 **What it does:**
-1. Calls `openf1.org/v1/sessions?session_key=9158`
-2. Calls `openf1.org/v1/drivers?session_key=9158`
-3. Calls `openf1.org/v1/laps?session_key=9158`
-4. Saves the bundled JSON to S3: `s3://racetrack-sessions/sessions/9158/raw.json`
-5. Fires an EventBridge event `SessionIngested`
+1. Calls OpenF1 for session info, all drivers, and all laps
+2. Saves the bundled JSON to S3: `s3://racetrack-sessions/sessions/9158/raw.json`
+3. Fires an EventBridge event `SessionIngested`
 
 **Expected response:**
 ```json
@@ -92,24 +115,22 @@ sam local invoke IngestSessionFunction \
 }
 ```
 
-To test with a different session, edit `events/event.json` and change `session_key`.
+To use a different session, edit `lambdas/ingest_session/events/event.json` and change `session_key`.
 
 ---
 
-### Step 1b — Save to RDS (EventBridge → PostgreSQL)
+### Step 1b — Save to RDS
 
-In production this runs automatically when EventBridge fires. For local testing, invoke it directly:
+In production EventBridge triggers this automatically. For local testing, invoke it directly after Step 1:
 
 ```bash
-cd project/lambdas/save_session
-sam build
 sam local invoke SaveSessionFunction \
-  --event events/event.json \
+  --event lambdas/save_session/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
 
-> The `events/event.json` file simulates the EventBridge payload with `bucket`, `key` and `session_key`. Make sure the S3 file exists first (run Step 1).
+> `lambdas/save_session/events/event.json` simulates the EventBridge payload. If you changed the session key, update the `key` field to `sessions/YOUR_KEY/raw.json`.
 
 **Expected response:**
 ```json
@@ -124,29 +145,20 @@ sam local invoke SaveSessionFunction \
 }
 ```
 
-The `sessions`, `drivers` and `laps` tables are created automatically on first run.
+Tables (`sessions`, `drivers`, `laps`) are created automatically on first run.
 
 ---
 
 ## Step 2 — List Available Sessions
 
-Returns all sessions stored in RDS. Optionally filter by year.
-
 ```bash
-cd project/lambdas/list_session
-sam build
 sam local invoke ListSessionFunction \
-  --event events/event.json \
+  --event lambdas/list_session/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
 
-To filter by year, update `events/event.json`:
-```json
-{
-  "queryStringParameters": { "year": "2024" }
-}
-```
+Filter by year: edit `lambdas/list_session/events/event.json` → `"queryStringParameters": { "year": "2024" }`.
 
 **Expected response:**
 ```json
@@ -172,13 +184,9 @@ To filter by year, update `events/event.json`:
 
 ## Step 3 — List Drivers in a Session
 
-Returns all drivers for a given session from RDS.
-
 ```bash
-cd project/lambdas/list_drivers
-sam build
-sam local invoke F1DriversApiFunction \
-  --event events/event.json \
+sam local invoke ListDriversFunction \
+  --event lambdas/list_drivers/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
@@ -206,18 +214,14 @@ sam local invoke F1DriversApiFunction \
 
 ## Step 4 — Driver Summary (Lap Stats)
 
-Returns computed statistics for a single driver: total laps, best lap time, average lap time, top speed, average speed.
-
 ```bash
-cd project/lambdas/driver_summary
-sam build
 sam local invoke DriverSummaryFunction \
-  --event events/event.json \
+  --event lambdas/driver_summary/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
 
-The default event uses `session_key=9158` and `driver_number=1`. Edit `events/event.json` to change the driver.
+Default event: `session_key=9158`, `driver_number=1`. Edit the event file to change driver.
 
 **Expected response:**
 ```json
@@ -244,13 +248,9 @@ The default event uses `session_key=9158` and `driver_number=1`. Edit `events/ev
 
 ## Step 5 — Driver Laps
 
-Returns every lap for a driver in a session, including sector speeds and pit-out flag.
-
 ```bash
-cd project/lambdas/driver_laps
-sam build
 sam local invoke DriverLapsFunction \
-  --event events/event.json \
+  --event lambdas/driver_laps/events/event.json \
   --env-vars env.json \
   --profile um_aws
 ```
@@ -285,7 +285,7 @@ sam local invoke DriverLapsFunction \
 }
 ```
 
-> Speed fields: `i1Speed` / `i2Speed` = intermediate speed traps, `stSpeed` = finish straight speed trap. All in km/h.
+> Speed fields: `i1Speed`/`i2Speed` = intermediate speed traps, `stSpeed` = finish straight. All in km/h.
 
 ---
 
@@ -295,33 +295,36 @@ sam local invoke DriverLapsFunction \
 |---|---|
 | `ExpiredTokenException` or credential errors | Add `--profile um_aws` to your SAM command |
 | `Connection refused` on port 5432 | Run `docker compose up -d` from `project/` first |
-| `NoSuchBucket` | `ingest_session` creates the bucket automatically; re-run Step 1 |
+| `NoSuchBucket` on S3 | `ingest_session` creates the bucket automatically — re-run Step 1 |
 | `404 No laps/drivers found` | Run Steps 1 and 1b first to populate the database |
-| SAM container can't reach Docker services | Use `host.docker.internal` in `env.json` (already configured) |
+| SAM container can't reach Docker services | `host.docker.internal` is already set in `env.json` — check Docker Desktop is running |
 
 ---
 
-## Quick Reference — All Commands
+## Quick Reference
 
 ```bash
 # Start infra
 cd project/ && docker compose up -d
 
+# Build all (once)
+sam build --profile um_aws
+
 # Step 1 — Ingest
-cd lambdas/ingest_session && sam build && sam local invoke IngestSessionFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke IngestSessionFunction --event lambdas/ingest_session/events/event.json --env-vars env.json --profile um_aws
 
 # Step 1b — Persist to RDS
-cd ../save_session && sam build && sam local invoke SaveSessionFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke SaveSessionFunction --event lambdas/save_session/events/event.json --env-vars env.json --profile um_aws
 
 # Step 2 — List sessions
-cd ../list_session && sam build && sam local invoke ListSessionFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke ListSessionFunction --event lambdas/list_session/events/event.json --env-vars env.json --profile um_aws
 
 # Step 3 — List drivers
-cd ../list_drivers && sam build && sam local invoke F1DriversApiFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke ListDriversFunction --event lambdas/list_drivers/events/event.json --env-vars env.json --profile um_aws
 
 # Step 4 — Driver summary
-cd ../driver_summary && sam build && sam local invoke DriverSummaryFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke DriverSummaryFunction --event lambdas/driver_summary/events/event.json --env-vars env.json --profile um_aws
 
 # Step 5 — Driver laps
-cd ../driver_laps && sam build && sam local invoke DriverLapsFunction --event events/event.json --env-vars env.json --profile um_aws
+sam local invoke DriverLapsFunction --event lambdas/driver_laps/events/event.json --env-vars env.json --profile um_aws
 ```
