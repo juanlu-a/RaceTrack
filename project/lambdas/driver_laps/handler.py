@@ -1,6 +1,12 @@
 """
 Lambda for API Gateway (HTTP API):
-  GET /drivers?session_key=...  → Returns drivers for a session from RDS
+  GET /driver-laps?session_key=...&driver_number=...
+
+Returns the list of laps for a driver in a session, ordered by lap number.
+Data is read from the laps table in RDS (populated by save_session).
+
+Each lap includes: lap_number, lap_duration, i1_speed, i2_speed, st_speed,
+is_pit_out_lap.
 """
 import json
 import os
@@ -32,18 +38,32 @@ def _get_conn():
 def handler(event, context):
     params = event.get("queryStringParameters") or {}
     session_key = (params.get("session_key") or "").strip()
+    driver_number = (params.get("driver_number") or "").strip()
+
     if not session_key:
         return _json_response(400, {
             "error": "Missing query parameter: session_key",
-            "example": "?session_key=9158",
+            "example": "?session_key=9158&driver_number=1",
         })
+    if not driver_number or not driver_number.isdigit():
+        return _json_response(400, {
+            "error": "Missing or invalid query parameter: driver_number (must be numeric)",
+            "example": "?session_key=9158&driver_number=1",
+        })
+
+    driver_number_int = int(driver_number)
 
     try:
         conn = _get_conn()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT * FROM drivers WHERE session_key = %s ORDER BY driver_number",
-                (session_key,),
+                """
+                SELECT lap_number, lap_duration, i1_speed, i2_speed, st_speed, is_pit_out_lap
+                FROM laps
+                WHERE session_key = %s AND driver_number = %s
+                ORDER BY lap_number
+                """,
+                (session_key, driver_number_int),
             )
             rows = cur.fetchall()
         conn.close()
@@ -52,22 +72,25 @@ def handler(event, context):
 
     if not rows:
         return _json_response(404, {
-            "error": f"No drivers found for session_key '{session_key}'",
+            "error": f"No laps found for driver {driver_number} in session '{session_key}'",
             "hint": f"Run GET /ingest?session_key={session_key} first",
         })
 
-    pilots = [
+    laps = [
         {
-            "pilotName": r["full_name"],
-            "pilotNumber": r["driver_number"],
-            "pilotTeam": r["team_name"],
-            "pilotCountry": r["country_code"],
+            "lapNumber": r["lap_number"],
+            "lapDuration": float(r["lap_duration"]) if r["lap_duration"] is not None else None,
+            "i1Speed": r["i1_speed"],
+            "i2Speed": r["i2_speed"],
+            "stSpeed": r["st_speed"],
+            "isPitOutLap": r["is_pit_out_lap"],
         }
         for r in rows
     ]
 
     return _json_response(200, {
         "sessionKey": session_key,
-        "pilotCount": len(pilots),
-        "pilots": pilots,
+        "driverNumber": driver_number_int,
+        "lapCount": len(laps),
+        "laps": laps,
     })

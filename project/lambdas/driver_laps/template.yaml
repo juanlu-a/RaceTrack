@@ -2,7 +2,7 @@
 # The API Gateway and deployment are managed by project/template.yaml.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: list_drivers — returns drivers for a session from RDS
+Description: driver_laps — list laps with speed data per driver from RDS
 
 Globals:
   Function:
@@ -11,7 +11,7 @@ Globals:
     MemorySize: 256
 
 Resources:
-  ListDriversFunction:
+  DriverLapsFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handler.handler

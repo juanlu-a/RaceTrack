@@ -1,10 +1,10 @@
 {
   "version": "2.0",
-  "routeKey": "GET /driver-summary",
-  "rawPath": "/driver-summary",
+  "routeKey": "GET /driver-laps",
+  "rawPath": "/driver-laps",
   "rawQueryString": "session_key=9158&driver_number=1",
   "headers": { "accept": "application/json" },
   "queryStringParameters": { "session_key": "9158", "driver_number": "1" },
-  "requestContext": { "http": { "method": "GET", "path": "/driver-summary" } },
+  "requestContext": { "http": { "method": "GET", "path": "/driver-laps" } },
   "isBase64Encoded": false
 }
