@@ -53,7 +53,7 @@ project/
 - `make`
 - AWS CLI configured with the `um_aws` profile
 
-> **AWS profile note (important for Juanlu):** The default profile is the SSO work account, which expires. Always pass `--profile um_aws` to every `sam` command.
+> **AWS profile note (Juanlu only):** The default profile on Juanlu's machine is an SSO work account that expires. Pass `PROFILE=um_aws` to every `make` command. Teammates with a correct default profile don't need this.
 
 ---
 
@@ -82,7 +82,9 @@ Run everything at once from `project/`:
 
 ```bash
 cd project/
-make all
+
+make all              # teammates (default AWS profile)
+make all PROFILE=um_aws  # Juanlu only
 ```
 
 This does in order:
@@ -316,7 +318,9 @@ sam local invoke DriverLapsFunction \
 
 ```bash
 # First-time bootstrap (build + start infra + wire EventBridge)
-cd project/ && make all
+cd project/
+make all                   # teammates
+make all PROFILE=um_aws    # Juanlu only
 
 # After code changes to save_session only
 make build setup
