@@ -22,25 +22,19 @@ S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "")
 EVENTS_ENDPOINT = os.environ.get("EVENTS_ENDPOINT", "")
 AWS_REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
 
-_dummy_creds = {
-    "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-    "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", "test"),
-    "aws_session_token": None,
-    "region_name": AWS_REGION,
-}
-
 
 def _s3_client():
-    kwargs = dict(_dummy_creds)
+    kwargs = {"region_name": AWS_REGION}
     if S3_ENDPOINT:
-        kwargs["endpoint_url"] = S3_ENDPOINT
+        # LocalStack mode: use dummy creds + custom endpoint
+        kwargs.update({"aws_access_key_id": "test", "aws_secret_access_key": "test", "endpoint_url": S3_ENDPOINT})
     return boto3.client("s3", **kwargs)
 
 
 def _events_client():
-    kwargs = dict(_dummy_creds)
+    kwargs = {"region_name": AWS_REGION}
     if EVENTS_ENDPOINT:
-        kwargs["endpoint_url"] = EVENTS_ENDPOINT
+        kwargs.update({"aws_access_key_id": "test", "aws_secret_access_key": "test", "endpoint_url": EVENTS_ENDPOINT})
     return boto3.client("events", **kwargs)
 
 
