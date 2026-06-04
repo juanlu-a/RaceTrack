@@ -1,21 +1,14 @@
-AWSTemplateFormatVersion: '2010-09-09'
+# Individual function definition (for reference only).
+# The API Gateway and deployment are managed by project/template.yaml.
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: driver_summary — resumen de piloto (RaceTrack)
+Description: driver_summary — lap statistics for a driver from RDS
 
 Globals:
   Function:
     Runtime: python3.9
     Timeout: 30
     MemorySize: 256
-  HttpApi:
-    CorsConfiguration:
-      AllowMethods:
-        - GET
-        - OPTIONS
-      AllowHeaders:
-        - Content-Type
-      AllowOrigins:
-        - "*"
 
 Resources:
   DriverSummaryFunction:
@@ -23,17 +16,10 @@ Resources:
     Properties:
       Handler: handler.handler
       CodeUri: .
-      Events:
-        DriverSummary:
-          Type: HttpApi
-          Properties:
-            Path: /driver-summary
-            Method: GET
-
-Outputs:
-  ApiEndpoint:
-    Description: "Base URL — use /driver-summary"
-    Value: !GetAtt ServerlessHttpApi.ApiEndpoint
-  DriverSummaryFunctionArn:
-    Description: ARN of the Lambda function
-    Value: !GetAtt DriverSummaryFunction.Arn
+      Environment:
+        Variables:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: racetrack
+          DB_USER: racetrack
+          DB_PASSWORD: racetrack

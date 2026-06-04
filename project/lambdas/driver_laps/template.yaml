@@ -1,0 +1,25 @@
+# Individual function definition (for reference only).
+# The API Gateway and deployment are managed by project/template.yaml.
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: driver_laps — list laps with speed data per driver from RDS
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Timeout: 30
+    MemorySize: 256
+
+Resources:
+  DriverLapsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: .
+      Environment:
+        Variables:
+          DB_HOST: localhost
+          DB_PORT: "5432"
+          DB_NAME: racetrack
+          DB_USER: racetrack
+          DB_PASSWORD: racetrack

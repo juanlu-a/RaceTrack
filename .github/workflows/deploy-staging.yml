@@ -1,0 +1,116 @@
+name: Deploy → Staging
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  terraform-apply-staging:
+    name: Terraform apply (staging)
+    runs-on: ubuntu-latest
+    env:
+      TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.x"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Terraform init
+        run: |
+          cd terraform
+          terraform init -backend-config="key=staging/terraform.tfstate"
+
+      - name: Terraform apply
+        run: |
+          cd terraform
+          terraform apply \
+            -var-file=environments/staging.tfvars \
+            -auto-approve
+
+  deploy-lambdas-staging:
+    name: Deploy Lambda code (staging)
+    runs-on: ubuntu-latest
+    needs: terraform-apply-staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Package and deploy each Lambda
+        run: |
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+          ENV="staging"
+          for LAMBDA in ingest_session save_session list_session list_drivers driver_summary driver_laps; do
+            FUNCTION_NAME="racetrack-${ENV}-${LAMBDA//_/-}"
+            echo "▶ Packaging ${FUNCTION_NAME}"
+            cd "project/lambdas/${LAMBDA}"
+            mkdir -p dist
+            pip install -q -r requirements.txt -t dist/
+            cp handler.py dist/
+            cd dist && zip -qr ../function.zip . && cd ..
+            aws lambda update-function-code \
+              --function-name "${FUNCTION_NAME}" \
+              --zip-file fileb://function.zip \
+              --region "${REGION}" \
+              --output text
+            aws lambda wait function-updated \
+              --function-name "${FUNCTION_NAME}" \
+              --region "${REGION}"
+            rm -rf dist function.zip
+            cd ../../..
+            echo "✓ ${FUNCTION_NAME} deployed"
+          done
+
+  run-e2e-tests:
+    name: E2E tests (staging)
+    runs-on: ubuntu-latest
+    needs: deploy-lambdas-staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Get API endpoint from Terraform output
+        id: api
+        run: |
+          cd terraform
+          terraform init -backend-config="key=staging/terraform.tfstate" -input=false
+          API_URL=$(terraform output -raw api_endpoint)
+          echo "url=${API_URL}" >> "$GITHUB_OUTPUT"
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+
+      - name: Install test dependencies
+        run: pip install -q -r project/requirements-dev.txt requests
+
+      - name: Run e2e tests
+        run: python -m pytest project/tests/ -v --tb=short -m "e2e"
+        env:
+          API_BASE_URL: ${{ steps.api.outputs.url }}
