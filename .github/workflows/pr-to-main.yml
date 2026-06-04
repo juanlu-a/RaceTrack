@@ -6,9 +6,21 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
+  guard-source-branch:
+    name: Source must be staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-staging sources
+        if: github.head_ref != 'staging'
+        run: |
+          echo "❌ PRs into main are only allowed from the 'staging' branch."
+          echo "   This PR comes from '${{ github.head_ref }}'. Close it and open from staging."
+          exit 1
+
   ci:
     name: Install, build & test
     runs-on: ubuntu-latest
+    needs: guard-source-branch
     steps:
       - uses: actions/checkout@v4
 
@@ -31,7 +43,7 @@ jobs:
   tf-plan-prod:
     name: Terraform plan (prod)
     runs-on: ubuntu-latest
-    needs: ci
+    needs: [guard-source-branch, ci]
     permissions:
       contents: read
       pull-requests: write

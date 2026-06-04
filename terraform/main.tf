@@ -30,10 +30,9 @@ module "ingest_session" {
   tags               = local.common_tags
 
   environment_variables = {
-    S3_BUCKET_NAME     = aws_s3_bucket.sessions.id
-    S3_ENDPOINT        = ""
-    EVENTS_ENDPOINT    = ""
-    AWS_DEFAULT_REGION = var.aws_region
+    S3_BUCKET_NAME  = aws_s3_bucket.sessions.id
+    S3_ENDPOINT     = ""
+    EVENTS_ENDPOINT = ""
   }
 }
 
@@ -49,8 +48,7 @@ module "save_session" {
   tags               = local.common_tags
 
   environment_variables = merge(local.db_env_vars, {
-    S3_ENDPOINT        = ""
-    AWS_DEFAULT_REGION = var.aws_region
+    S3_ENDPOINT = ""
   })
 }
 
