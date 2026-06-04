@@ -90,6 +90,10 @@ jobs:
         with:
           python-version: "3.9"
 
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.x"
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
