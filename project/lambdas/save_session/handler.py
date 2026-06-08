@@ -104,14 +104,10 @@ ON CONFLICT (session_key, driver_number, lap_number) DO UPDATE SET
 
 
 def _s3_client():
-    kwargs = {
-        "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-        "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", "test"),
-        "aws_session_token": None,
-        "region_name": AWS_REGION,
-    }
+    kwargs = {"region_name": AWS_REGION}
     if S3_ENDPOINT:
-        kwargs["endpoint_url"] = S3_ENDPOINT
+        # LocalStack mode: use dummy creds + custom endpoint
+        kwargs.update({"aws_access_key_id": "test", "aws_secret_access_key": "test", "endpoint_url": S3_ENDPOINT})
     return boto3.client("s3", **kwargs)
 
 

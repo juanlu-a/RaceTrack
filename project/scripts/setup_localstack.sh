@@ -28,7 +28,7 @@ BUILD_DIR=".aws-sam/build/${FUNCTION_NAME}"
 # ── 0. Sanity check ─────────────────────────────────────────────────────────
 if [ ! -d "$BUILD_DIR" ]; then
   echo "ERROR: Build directory '$BUILD_DIR' not found."
-  echo "       Run 'sam build' (or 'sam build --profile YOUR_PROFILE') first."
+  echo "       Run 'sam build --profile um_aws' first."
   exit 1
 fi
 
