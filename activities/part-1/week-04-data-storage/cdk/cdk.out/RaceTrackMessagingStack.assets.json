@@ -1,0 +1,21 @@
+{
+  "version": "53.0.0",
+  "files": {
+    "ab1857bb0204e2f4722f975ce4493ea87b78ab2bac42e4dd8d09652b81c8da4c": {
+      "displayName": "RaceTrackMessagingStack Template",
+      "source": {
+        "path": "RaceTrackMessagingStack.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "764042516108-us-east-1-253cc7af": {
+          "bucketName": "cdk-hnb659fds-assets-764042516108-us-east-1",
+          "objectKey": "ab1857bb0204e2f4722f975ce4493ea87b78ab2bac42e4dd8d09652b81c8da4c.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::764042516108:role/cdk-hnb659fds-file-publishing-role-764042516108-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

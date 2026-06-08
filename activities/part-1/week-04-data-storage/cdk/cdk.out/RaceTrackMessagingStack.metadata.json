@@ -1,0 +1,26 @@
+{
+  "/RaceTrackMessagingStack/BootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "BootstrapVersion"
+    }
+  ],
+  "/RaceTrackMessagingStack/CheckBootstrapVersion": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CheckBootstrapVersion"
+    }
+  ],
+  "/RaceTrackMessagingStack/IngestScheduleRule/Resource": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "IngestScheduleRule333B00B1"
+    }
+  ],
+  "/RaceTrackMessagingStack/CDKMetadata/Default": [
+    {
+      "type": "aws:cdk:logicalId",
+      "data": "CDKMetadata"
+    }
+  ]
+}

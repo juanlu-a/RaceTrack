@@ -30,6 +30,35 @@ Resources:
             Path: /sessions
             Method: GET
 
+
+  GetSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.get_session
+      CodeUri: .
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref F1Api
+            Path: /sessions/{session_key}
+            Method: GET
+
+  IngestSessionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.ingest_session
+      CodeUri: .
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref F1Api
+            Path: /sessions/{session_key}/ingest
+            Method: POST
+      Timeout: 120
+      MemorySize: 512
+
   # TODO: Add GetSessionFunction
   # - Handler: handler.get_session
   # - Path: /sessions/{session_key}  (the {session_key} becomes a path parameter)
