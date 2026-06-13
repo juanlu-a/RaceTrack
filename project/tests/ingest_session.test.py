@@ -14,16 +14,32 @@ _LAP = {"driver_number": 1, "lap_number": 1, "lap_duration": 83.5,
         "i1_speed": 290, "i2_speed": 300, "st_speed": 310, "is_pit_out_lap": False}
 
 
-def _mock_requests(mocker, sessions=None, drivers=None, laps=None):
-    resp = MagicMock()
-    resp.raise_for_status.return_value = None
-    resp.json.side_effect = [
-        sessions if sessions is not None else [_SESSION],
-        drivers if drivers is not None else [_DRIVER],
-        laps if laps is not None else [_LAP],
-    ]
-    mocker.patch("requests.get", return_value=resp)
-    return resp
+def _mock_requests(mocker, sessions=None, drivers=None, laps=None,
+                   starting_grid=None, pit=None, position=None,
+                   intervals=None, race_control=None):
+    """URL-aware mock for OpenF1. The handler now fetches several datasets
+    (some optional, laps/position per driver), so we map each path to a fixed
+    response instead of relying on a fixed call order."""
+    data_by_path = {
+        "sessions": sessions if sessions is not None else [_SESSION],
+        "drivers": drivers if drivers is not None else [_DRIVER],
+        "laps": laps if laps is not None else [_LAP],
+        "starting_grid": starting_grid if starting_grid is not None else [],
+        "pit": pit if pit is not None else [],
+        "position": position if position is not None else [],
+        "intervals": intervals if intervals is not None else [],
+        "race_control": race_control if race_control is not None else [],
+    }
+
+    def _get(url, params=None, timeout=None):
+        path = url.rstrip("/").rsplit("/", 1)[-1]
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        resp.json.return_value = data_by_path.get(path, [])
+        return resp
+
+    mocker.patch("requests.get", side_effect=_get)
+    return data_by_path
 
 
 def test_missing_session_key_returns_400(ingest_mod):
@@ -54,12 +70,13 @@ def test_s3_object_created(ingest_mod, mocker):
 
 @mock_aws
 def test_response_counts_drivers_and_laps(ingest_mod, mocker):
-    _mock_requests(mocker, drivers=[_DRIVER, _DRIVER], laps=[_LAP, _LAP, _LAP])
+    # laps are now fetched per driver, so total laps = laps_per_driver * drivers
+    _mock_requests(mocker, drivers=[_DRIVER, _DRIVER], laps=[_LAP])
     result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
     assert result["statusCode"] == 200
     body = json.loads(result["body"])
     assert body["drivers_fetched"] == 2
-    assert body["laps_fetched"] == 3
+    assert body["laps_fetched"] == 2
 
 
 @mock_aws

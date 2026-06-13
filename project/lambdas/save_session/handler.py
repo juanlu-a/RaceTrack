@@ -5,7 +5,9 @@ Lambda triggered by EventBridge:
   Detail: { "bucket": "...", "key": "...", "session_key": "..." }
 
 Reads the raw JSON bundle from S3, creates the RDS tables if they don't exist,
-then upserts the session, drivers and laps rows into PostgreSQL.
+then upserts the session, drivers and laps rows into PostgreSQL. It also flattens
+the time-series datasets (position, intervals, pit, race_control, laps,
+starting_grid) into a unified, chronological `session_events` table.
 """
 import json
 import os
@@ -61,6 +63,32 @@ CREATE TABLE IF NOT EXISTS laps (
     is_pit_out_lap BOOLEAN,
     PRIMARY KEY (session_key, driver_number, lap_number)
 );
+"""
+
+# Unified, chronological event log used by downstream consumers (e.g. the
+# simulation publisher). Each row is one event from one of the time-series
+# datasets (position, intervals, pit, race_control, laps, starting_grid).
+CREATE_SESSION_EVENTS = """
+CREATE TABLE IF NOT EXISTS session_events (
+    id          BIGSERIAL PRIMARY KEY,
+    session_id  TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    driver_id   INTEGER,
+    payload     JSONB,
+    "timestamp" TIMESTAMPTZ
+);
+"""
+
+CREATE_SESSION_EVENTS_INDEX = """
+CREATE INDEX IF NOT EXISTS idx_session_events_sid_ts
+    ON session_events (session_id, "timestamp");
+"""
+
+DELETE_SESSION_EVENTS = "DELETE FROM session_events WHERE session_id = %s;"
+
+INSERT_SESSION_EVENT = """
+INSERT INTO session_events (session_id, event_type, driver_id, payload, "timestamp")
+VALUES (%(session_id)s, %(event_type)s, %(driver_id)s, %(payload)s, %(timestamp)s);
 """
 
 UPSERT_SESSION = """
@@ -121,6 +149,47 @@ def _get_conn():
     )
 
 
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _build_events(session_key, session_data, payload):
+    """Flatten the time-series datasets into a single chronological event list.
+
+    Each dataset maps to one event_type. The OpenF1 `date` field is used as the
+    event timestamp; laps use `date_start`; starting_grid has no timestamp so it
+    falls back to the session start time.
+    """
+    session_start = session_data.get("date_start")
+
+    # (dataset_key, event_type, timestamp_field, timestamp_fallback)
+    mappings = [
+        ("position", "position", "date", None),
+        ("intervals", "interval", "date", None),
+        ("pit", "pit", "date", None),
+        ("race_control", "race_control", "date", None),
+        ("laps", "lap", "date_start", None),
+        ("starting_grid", "starting_grid", "date", session_start),
+    ]
+
+    events = []
+    for dataset_key, event_type, ts_field, ts_fallback in mappings:
+        for item in payload.get(dataset_key) or []:
+            if not isinstance(item, dict):
+                continue
+            events.append({
+                "session_id": session_key,
+                "event_type": event_type,
+                "driver_id": _int_or_none(item.get("driver_number")),
+                "payload": psycopg2.extras.Json(item),
+                "timestamp": item.get(ts_field) or ts_fallback,
+            })
+    return events
+
+
 def handler(event, context):
     # EventBridge wraps the detail as a dict already
     detail = event.get("detail") or {}
@@ -147,6 +216,9 @@ def handler(event, context):
     drivers_data = payload.get("drivers") or []
     laps_data = payload.get("laps") or []
 
+    # Flatten the time-series datasets into chronological events.
+    events = _build_events(session_key, session_data, payload)
+
     # 2. Persist to RDS
     try:
         conn = _get_conn()
@@ -155,6 +227,8 @@ def handler(event, context):
                 cur.execute(CREATE_SESSIONS)
                 cur.execute(CREATE_DRIVERS)
                 cur.execute(CREATE_LAPS)
+                cur.execute(CREATE_SESSION_EVENTS)
+                cur.execute(CREATE_SESSION_EVENTS_INDEX)
 
                 # Upsert session
                 cur.execute(UPSERT_SESSION, {
@@ -197,6 +271,11 @@ def handler(event, context):
                         "is_pit_out_lap": bool(lap.get("is_pit_out_lap", False)),
                     })
 
+                # Rebuild session_events for this session (idempotent re-ingest)
+                cur.execute(DELETE_SESSION_EVENTS, (session_key,))
+                for ev in events:
+                    cur.execute(INSERT_SESSION_EVENT, ev)
+
         conn.close()
     except Exception as e:
         return {"statusCode": 500, "body": json.dumps({
@@ -208,4 +287,5 @@ def handler(event, context):
         "session_key": session_key,
         "drivers_saved": len(drivers_data),
         "laps_saved": len(laps_data),
+        "events_saved": len(events),
     })}

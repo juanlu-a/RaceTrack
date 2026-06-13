@@ -2,9 +2,13 @@
 Lambda for API Gateway (HTTP API):
   GET /ingest?session_key=...
 
-Fetches ALL data for the session from OpenF1 (session info, drivers, laps),
-bundles it into a single JSON payload, saves it to S3, then fires an
-EventBridge event so save_session can persist everything to RDS.
+Fetches the data for the session from OpenF1 (session info, drivers,
+starting_grid, laps, pit, position, intervals, race_control), bundles it into a
+single JSON payload, saves it to S3, then fires an EventBridge event so
+save_session can persist everything to RDS.
+
+car_data and location are intentionally NOT fetched: they are high-frequency
+telemetry that is far too large for a single Lambda invocation / S3 object.
 
 This is the ONE-TIME ingestion step. After this runs, all other lambdas
 read exclusively from RDS — they never call OpenF1 again.
@@ -56,6 +60,15 @@ def _fetch(path: str, params: dict) -> list:
     return data
 
 
+def _fetch_optional(path: str, params: dict) -> list:
+    """Best-effort fetch: returns [] instead of raising if the dataset is
+    missing or the call fails (some sessions don't expose every dataset)."""
+    try:
+        return _fetch(path, params)
+    except (requests.exceptions.RequestException, ValueError):
+        return []
+
+
 def handler(event, context):
     params = event.get("queryStringParameters") or {}
     session_key = (params.get("session_key") or "").strip()
@@ -65,11 +78,13 @@ def handler(event, context):
             "example": "?session_key=9158",
         })
 
-    # 1. Fetch everything from OpenF1
+    # 1. Fetch the required datasets (a failure here aborts ingestion).
+    #    NOTE: car_data and location are intentionally excluded: they are
+    #    high-frequency telemetry (millions of rows) that would blow the
+    #    Lambda timeout/memory and produce a huge S3 object.
     try:
         sessions = _fetch("sessions", {"session_key": session_key})
         drivers = _fetch("drivers", {"session_key": session_key})
-        laps = _fetch("laps", {"session_key": session_key})
     except requests.exceptions.Timeout:
         return _json_response(502, {"error": "OpenF1 API timeout"})
     except requests.exceptions.RequestException as e:
@@ -80,14 +95,45 @@ def handler(event, context):
     if not sessions:
         return _json_response(404, {"error": f"No session found for session_key '{session_key}'"})
 
+    # 2. Fetch optional session-wide datasets. These are best-effort: some
+    #    sessions don't expose every dataset (e.g. starting_grid 404s for
+    #    practice/qualifying), so a failure defaults to an empty list.
+    starting_grid = _fetch_optional("starting_grid", {"session_key": session_key})
+    pit = _fetch_optional("pit", {"session_key": session_key})
+    intervals = _fetch_optional("intervals", {"session_key": session_key})
+    race_control = _fetch_optional("race_control", {"session_key": session_key})
+
+    # 3. Fetch per-driver datasets (laps, position). One call per driver_number;
+    #    skip drivers that error out so a single failure doesn't abort ingestion.
+    laps = []
+    position = []
+    for d in drivers:
+        driver_number = d.get("driver_number")
+        if driver_number is None:
+            continue
+        driver_params = {"session_key": session_key, "driver_number": driver_number}
+        try:
+            laps.extend(_fetch("laps", driver_params))
+        except (requests.exceptions.RequestException, ValueError):
+            pass
+        try:
+            position.extend(_fetch("position", driver_params))
+        except (requests.exceptions.RequestException, ValueError):
+            pass
+
     payload = {
         "session_key": session_key,
         "session": sessions[0],
         "drivers": drivers,
+        "starting_grid": starting_grid,
         "laps": laps,
+        "pit": pit,
+        "position": position,
+        "intervals": intervals,
+        "race_control": race_control,
     }
 
-    # 2. Save raw JSON to S3
+    # 4. Save raw JSON to S3
     s3_key = f"sessions/{session_key}/raw.json"
     try:
         s3 = _s3_client()
@@ -105,7 +151,7 @@ def handler(event, context):
     except Exception as e:
         return _json_response(500, {"error": "Failed to save to S3", "details": str(e)})
 
-    # 3. Fire EventBridge event so save_session can pick it up
+    # 5. Fire EventBridge event so save_session can pick it up
     event_detail = json.dumps({
         "bucket": S3_BUCKET,
         "key": s3_key,
@@ -129,5 +175,10 @@ def handler(event, context):
         "message": "Session ingested successfully",
         "session_key": session_key,
         "drivers_fetched": len(drivers),
+        "starting_grid_fetched": len(starting_grid),
         "laps_fetched": len(laps),
+        "pit_fetched": len(pit),
+        "position_fetched": len(position),
+        "intervals_fetched": len(intervals),
+        "race_control_fetched": len(race_control),
     })
