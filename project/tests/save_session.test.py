@@ -72,4 +72,4 @@ def test_db_tables_created(save_mod, mocker):
     save_mod.handler({"detail": {"bucket": bucket, "key": key, "session_key": "9158"}}, None)
 
     calls = [str(c) for c in mock_cur.execute.call_args_list]
-    assert len([c for c in calls if "CREATE TABLE" in c]) == 3  # sessions, drivers, laps
+    assert len([c for c in calls if "CREATE TABLE" in c]) == 4  # sessions, drivers, laps, session_events
