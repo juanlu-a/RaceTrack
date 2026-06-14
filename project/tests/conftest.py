@@ -56,6 +56,11 @@ def ingest_mod():
 
 
 @pytest.fixture(scope="session")
+def ingest_worker_mod():
+    return _load_lambda("ingest_worker")
+
+
+@pytest.fixture(scope="session")
 def save_mod():
     return _load_lambda("save_session")
 

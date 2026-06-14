@@ -1,0 +1,8 @@
+{
+  "version": "0",
+  "source": "racetrack",
+  "detail-type": "IngestRequested",
+  "detail": {
+    "session_key": "9158"
+  }
+}

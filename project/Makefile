@@ -1,4 +1,4 @@
-.PHONY: build start stop setup all start-api invoke-ingest invoke-save invoke-sessions invoke-drivers invoke-summary invoke-laps
+.PHONY: build start stop setup all start-api invoke-ingest invoke-worker invoke-save invoke-sessions invoke-drivers invoke-summary invoke-laps
 
 # AWS profile — leave empty to use the default profile (works for most teammates).
 # Juanlu: run make with PROFILE=um_aws  e.g.  make all PROFILE=um_aws
@@ -47,6 +47,12 @@ start-api:
 invoke-ingest:
 	sam local invoke IngestSessionFunction \
 		--event lambdas/ingest_session/events/event.json \
+		--env-vars env.json \
+		$(PROFILE_FLAG)
+
+invoke-worker:
+	sam local invoke IngestWorkerFunction \
+		--event lambdas/ingest_worker/events/event.json \
 		--env-vars env.json \
 		$(PROFILE_FLAG)
 
