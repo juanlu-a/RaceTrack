@@ -68,15 +68,41 @@ Resources:
     Properties:
       BucketName: !Ref S3BucketName
 
-  # ── Step 1a: Ingest session ───────────────────────────────────────────────
+  # ── Step 1a: Ingest session (thin HTTP entrypoint) ────────────────────────
   # GET /ingest?session_key=...
-  # Fetches ALL data from OpenF1 (session, drivers, laps) and saves to S3,
-  # then fires an EventBridge event so SaveSessionFunction persists to RDS.
+  # Validates the request, fires an EventBridge `IngestRequested` event and
+  # returns 202 immediately. The heavy OpenF1 fetch happens asynchronously in
+  # IngestWorkerFunction (no API Gateway 30s timeout).
   IngestSessionFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: handler.handler
       CodeUri: lambdas/ingest_session/
+      Environment:
+        Variables:
+          EVENTS_ENDPOINT: !Ref EventsEndpoint
+          AWS_DEFAULT_REGION: !Ref AWS::Region
+      Policies:
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
+      Events:
+        IngestSession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref RaceTrackApi
+            Path: /ingest
+            Method: GET
+
+  # ── Step 1b: Ingest worker (heavy, async) ─────────────────────────────────
+  # Triggered by EventBridge (IngestRequested). Fetches everything from OpenF1
+  # (session, drivers, laps, position, telemetry), saves the bundle to S3, then
+  # fires SessionIngested so SaveSessionFunction persists to RDS.
+  IngestWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: handler.handler
+      CodeUri: lambdas/ingest_worker/
+      Timeout: 900
       Environment:
         Variables:
           S3_BUCKET_NAME: !Ref SessionsBucket
@@ -89,14 +115,16 @@ Resources:
         - EventBridgePutEventsPolicy:
             EventBusName: default
       Events:
-        IngestSession:
-          Type: HttpApi
+        IngestRequested:
+          Type: EventBridgeRule
           Properties:
-            ApiId: !Ref RaceTrackApi
-            Path: /ingest
-            Method: GET
+            Pattern:
+              source:
+                - racetrack
+              detail-type:
+                - IngestRequested
 
-  # ── Step 1b: Save session to RDS ─────────────────────────────────────────
+  # ── Step 1c: Save session to RDS ─────────────────────────────────────────
   # Triggered by EventBridge (SessionIngested).
   # Reads the raw JSON from S3 and upserts sessions/drivers/laps into PostgreSQL.
   SaveSessionFunction:
