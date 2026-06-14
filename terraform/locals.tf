@@ -21,7 +21,7 @@ locals {
   }
 
   db_env_vars = {
-    DB_HOST     = var.db_host
+    DB_HOST     = aws_db_instance.racetrack.address
     DB_PORT     = tostring(var.db_port)
     DB_NAME     = var.db_name
     DB_USER     = var.db_user
