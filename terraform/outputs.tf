@@ -7,6 +7,11 @@ output "sessions_bucket_name" {
   value = aws_s3_bucket.sessions.id
 }
 
+output "db_endpoint" {
+  value       = aws_db_instance.racetrack.endpoint
+  description = "RDS PostgreSQL endpoint (host:port)"
+}
+
 output "function_names" {
   value = {
     ingest_session = module.ingest_session.function_name
