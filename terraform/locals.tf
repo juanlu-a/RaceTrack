@@ -13,6 +13,7 @@ locals {
   # Lambda function names follow the pattern: racetrack-<env>-<function>
   fn = {
     ingest_session   = "${local.prefix}-ingest-session"
+    ingest_worker    = "${local.prefix}-ingest-worker"
     save_session     = "${local.prefix}-save-session"
     list_session     = "${local.prefix}-list-session"
     list_drivers     = "${local.prefix}-list-drivers"

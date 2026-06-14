@@ -30,6 +30,24 @@ module "ingest_session" {
   tags               = local.common_tags
 
   environment_variables = {
+    EVENTS_ENDPOINT = ""
+  }
+}
+
+# Heavy async worker: triggered by EventBridge (IngestRequested). Fetches from
+# OpenF1 and writes to S3, so it needs a long timeout (not bound by API Gateway).
+module "ingest_worker" {
+  source = "./modules/lambda"
+
+  function_name      = local.fn.ingest_worker
+  role_arn           = aws_iam_role.lambda_exec.arn
+  runtime            = var.lambda_runtime
+  timeout            = 900
+  memory_size        = 512
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+
+  environment_variables = {
     S3_BUCKET_NAME  = aws_s3_bucket.sessions.id
     S3_ENDPOINT     = ""
     EVENTS_ENDPOINT = ""
@@ -163,6 +181,19 @@ module "api_gateway" {
 
 # ── EventBridge ───────────────────────────────────────────────────────────────
 
+# IngestRequested (fired by ingest_session) → ingest_worker
+module "eventbridge_ingest_requested" {
+  source = "./modules/eventbridge"
+
+  rule_name            = "${local.prefix}-ingest-requested"
+  event_source         = "racetrack"
+  detail_type          = "IngestRequested"
+  target_function_arn  = module.ingest_worker.function_arn
+  target_function_name = module.ingest_worker.function_name
+  tags                 = local.common_tags
+}
+
+# SessionIngested (fired by ingest_worker) → save_session
 module "eventbridge" {
   source = "./modules/eventbridge"
 
