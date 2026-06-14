@@ -108,6 +108,22 @@ module "driver_laps" {
   environment_variables = local.db_env_vars
 }
 
+module "start_simulation" {
+  source = "./modules/lambda"
+
+  function_name      = local.fn.start_simulation
+  role_arn           = aws_iam_role.lambda_exec.arn
+  runtime            = var.lambda_runtime
+  timeout            = var.lambda_timeout
+  memory_size        = var.lambda_memory_size
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+
+  environment_variables = merge(local.db_env_vars, {
+    SQS_QUEUE_URL = aws_sqs_queue.simulation.url
+  })
+}
+
 # ── API Gateway ───────────────────────────────────────────────────────────────
 
 module "api_gateway" {
@@ -137,6 +153,10 @@ module "api_gateway" {
     "GET /driver-laps" = {
       invoke_arn    = module.driver_laps.invoke_arn
       function_name = module.driver_laps.function_name
+    }
+    "POST /start-simulation" = {
+      invoke_arn    = module.start_simulation.invoke_arn
+      function_name = module.start_simulation.function_name
     }
   }
 }
