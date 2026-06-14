@@ -7,7 +7,8 @@ Lambda triggered by EventBridge:
 Reads the raw JSON bundle from S3, creates the RDS tables if they don't exist,
 then upserts the session, drivers and laps rows into PostgreSQL. It also flattens
 the time-series datasets (position, intervals, pit, race_control, laps,
-starting_grid) into a unified, chronological `session_events` table.
+starting_grid, car_data, location) into a unified, chronological
+`session_events` table.
 """
 import json
 import os
@@ -173,6 +174,8 @@ def _build_events(session_key, session_data, payload):
         ("race_control", "race_control", "date", None),
         ("laps", "lap", "date_start", None),
         ("starting_grid", "starting_grid", "date", session_start),
+        ("car_data", "car_data", "date", None),
+        ("location", "location", "date", None),
     ]
 
     events = []
