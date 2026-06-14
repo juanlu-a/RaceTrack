@@ -16,10 +16,11 @@ _LAP = {"driver_number": 1, "lap_number": 1, "lap_duration": 83.5,
 
 def _mock_requests(mocker, sessions=None, drivers=None, laps=None,
                    starting_grid=None, pit=None, position=None,
-                   intervals=None, race_control=None):
+                   intervals=None, race_control=None, car_data=None,
+                   location=None):
     """URL-aware mock for OpenF1. The handler now fetches several datasets
-    (some optional, laps/position per driver), so we map each path to a fixed
-    response instead of relying on a fixed call order."""
+    (some optional, laps/position/car_data/location per driver), so we map each
+    path to a fixed response instead of relying on a fixed call order."""
     data_by_path = {
         "sessions": sessions if sessions is not None else [_SESSION],
         "drivers": drivers if drivers is not None else [_DRIVER],
@@ -29,6 +30,8 @@ def _mock_requests(mocker, sessions=None, drivers=None, laps=None,
         "position": position if position is not None else [],
         "intervals": intervals if intervals is not None else [],
         "race_control": race_control if race_control is not None else [],
+        "car_data": car_data if car_data is not None else [],
+        "location": location if location is not None else [],
     }
 
     def _get(url, params=None, timeout=None):
@@ -93,3 +96,49 @@ def test_openf1_timeout_returns_502(ingest_mod, mocker):
     result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
     assert result["statusCode"] == 502
     assert "timeout" in result["body"].lower()
+
+
+@mock_aws
+def test_car_data_decimated_to_1hz(ingest_mod, mocker):
+    # ~3 Hz input over ~1.3s -> with the default 1 Hz decimation we keep the
+    # first point of each second (no averaging): t=0s and t=1s.
+    car_data = [
+        {"date": "2023-09-03T13:00:00+00:00", "driver_number": 1, "speed": 100},
+        {"date": "2023-09-03T13:00:00.300000+00:00", "driver_number": 1, "speed": 110},
+        {"date": "2023-09-03T13:00:00.600000+00:00", "driver_number": 1, "speed": 120},
+        {"date": "2023-09-03T13:00:01+00:00", "driver_number": 1, "speed": 130},
+        {"date": "2023-09-03T13:00:01.300000+00:00", "driver_number": 1, "speed": 140},
+    ]
+    _mock_requests(mocker, car_data=car_data)
+    result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
+    assert result["statusCode"] == 200
+    assert json.loads(result["body"])["car_data_points"] == 2
+
+    s3 = boto3.client("s3", region_name="us-east-1")
+    obj = s3.get_object(Bucket="racetrack-test-sessions", Key="sessions/9158/raw.json")
+    body = json.loads(obj["Body"].read())
+    speeds = [p["speed"] for p in body["car_data"]]
+    assert speeds == [100, 130]
+    # Only the projected fields are kept.
+    assert set(body["car_data"][0].keys()) == {"date", "driver_number", "speed"}
+
+
+@mock_aws
+def test_telemetry_clipped_to_race_window(ingest_mod, mocker):
+    session = dict(_SESSION,
+                   date_start="2023-09-03T13:00:00+00:00",
+                   date_end="2023-09-03T13:00:05+00:00")
+    location = [
+        {"date": "2023-09-03T12:59:59+00:00", "driver_number": 1, "x": 1, "y": 1, "z": 0},  # before
+        {"date": "2023-09-03T13:00:02+00:00", "driver_number": 1, "x": 2, "y": 2, "z": 0},  # inside
+        {"date": "2023-09-03T13:00:10+00:00", "driver_number": 1, "x": 3, "y": 3, "z": 0},  # after
+    ]
+    _mock_requests(mocker, sessions=[session], location=location)
+    result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
+    assert result["statusCode"] == 200
+    assert json.loads(result["body"])["location_points"] == 1
+
+    s3 = boto3.client("s3", region_name="us-east-1")
+    obj = s3.get_object(Bucket="racetrack-test-sessions", Key="sessions/9158/raw.json")
+    body = json.loads(obj["Body"].read())
+    assert [p["x"] for p in body["location"]] == [2]
