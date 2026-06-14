@@ -58,3 +58,18 @@ resource "aws_iam_role_policy" "save_session" {
     }]
   })
 }
+
+# start_simulation: publish bucket messages to the simulation SQS queue
+resource "aws_iam_role_policy" "start_simulation" {
+  name = "${local.prefix}-start-simulation"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["sqs:SendMessage", "sqs:SendMessageBatch"]
+      Resource = aws_sqs_queue.simulation.arn
+    }]
+  })
+}

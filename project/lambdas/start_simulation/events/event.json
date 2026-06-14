@@ -1,0 +1,10 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /start-simulation",
+  "rawPath": "/start-simulation",
+  "rawQueryString": "",
+  "headers": { "content-type": "application/json" },
+  "requestContext": { "http": { "method": "POST", "path": "/start-simulation" } },
+  "body": "{\"session_id\":\"9158\",\"simulation_duration_seconds\":300}",
+  "isBase64Encoded": false
+}
