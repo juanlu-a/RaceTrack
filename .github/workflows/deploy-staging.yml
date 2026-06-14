@@ -58,7 +58,7 @@ jobs:
         run: |
           REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
           ENV="staging"
-          for LAMBDA in ingest_session save_session list_session list_drivers driver_summary driver_laps start_simulation; do
+          for LAMBDA in ingest_session ingest_worker save_session list_session list_drivers driver_summary driver_laps start_simulation; do
             FUNCTION_NAME="racetrack-${ENV}-${LAMBDA//_/-}"
             echo "▶ Packaging ${FUNCTION_NAME}"
             cd "project/lambdas/${LAMBDA}"
