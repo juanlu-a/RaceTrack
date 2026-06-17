@@ -36,6 +36,7 @@ os.environ.update({
 })
 
 _LAMBDAS_ROOT = pathlib.Path(__file__).parent.parent / "lambdas"
+_CONTAINERS_ROOT = pathlib.Path(__file__).parent.parent / "containers"
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")
 
@@ -43,6 +44,19 @@ API_BASE_URL = os.environ.get("API_BASE_URL", "").rstrip("/")
 def _load_lambda(name: str):
     path = _LAMBDAS_ROOT / name / "handler.py"
     spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _load_container_module(container: str, module: str):
+    """Load a single .py module from a container dir (e.g. f1_consumer/metrics.py).
+
+    Uses a unique import name so two containers can both define `app`/`metrics`
+    without colliding in sys.modules.
+    """
+    path = _CONTAINERS_ROOT / container / f"{module}.py"
+    spec = importlib.util.spec_from_file_location(f"{container}.{module}", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -83,6 +97,16 @@ def driver_summary_mod():
 @pytest.fixture(scope="session")
 def driver_laps_mod():
     return _load_lambda("driver_laps")
+
+
+@pytest.fixture(scope="session")
+def consumer_metrics_mod():
+    return _load_container_module("f1_consumer", "metrics")
+
+
+@pytest.fixture(scope="session")
+def exporter_clock_mod():
+    return _load_container_module("metrics_exporter", "clock")
 
 
 @pytest.fixture
