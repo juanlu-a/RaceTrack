@@ -1,78 +1,48 @@
 import json
 from unittest.mock import MagicMock
 
-import boto3
-import pytest
-from moto import mock_aws
+
+def _patch_events(ingest_mod, mocker):
+    """Patch the EventBridge client so handler() doesn't hit AWS. Returns the
+    mock events client so tests can assert on put_events calls."""
+    eb = MagicMock()
+    eb.put_events.return_value = {"FailedEntryCount": 0, "Entries": [{"EventId": "1"}]}
+    mocker.patch.object(ingest_mod, "_events_client", return_value=eb)
+    return eb
 
 
-_SESSION = {"session_key": "9158", "session_name": "Race", "session_type": "Race",
-            "circuit_short_name": "Monza", "country_name": "Italy", "location": "Monza",
-            "date_start": "2023-09-03", "date_end": "2023-09-03", "year": 2023, "meeting_key": "1234"}
-_DRIVER = {"driver_number": 1, "full_name": "Max Verstappen", "team_name": "Red Bull", "country_code": "NLD"}
-_LAP = {"driver_number": 1, "lap_number": 1, "lap_duration": 83.5,
-        "i1_speed": 290, "i2_speed": 300, "st_speed": 310, "is_pit_out_lap": False}
-
-
-def _mock_requests(mocker, sessions=None, drivers=None, laps=None):
-    resp = MagicMock()
-    resp.raise_for_status.return_value = None
-    resp.json.side_effect = [
-        sessions if sessions is not None else [_SESSION],
-        drivers if drivers is not None else [_DRIVER],
-        laps if laps is not None else [_LAP],
-    ]
-    mocker.patch("requests.get", return_value=resp)
-    return resp
-
-
-def test_missing_session_key_returns_400(ingest_mod):
+def test_missing_session_key_returns_400(ingest_mod, mocker):
+    eb = _patch_events(ingest_mod, mocker)
     result = ingest_mod.handler({"queryStringParameters": {}}, None)
     assert result["statusCode"] == 400
     assert "session_key" in result["body"]
+    eb.put_events.assert_not_called()
 
 
-def test_missing_params_returns_400(ingest_mod):
+def test_missing_params_returns_400(ingest_mod, mocker):
+    _patch_events(ingest_mod, mocker)
     result = ingest_mod.handler({"queryStringParameters": None}, None)
     assert result["statusCode"] == 400
 
 
-@mock_aws
-def test_s3_object_created(ingest_mod, mocker):
-    _mock_requests(mocker)
+def test_returns_202_and_fires_ingest_requested(ingest_mod, mocker):
+    eb = _patch_events(ingest_mod, mocker)
     result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
-    assert result["statusCode"] == 200
 
-    s3 = boto3.client("s3", region_name="us-east-1")
-    obj = s3.get_object(Bucket="racetrack-test-sessions", Key="sessions/9158/raw.json")
-    body = json.loads(obj["Body"].read())
-    assert body["session_key"] == "9158"
-    assert body["session"] == _SESSION
-    assert len(body["drivers"]) == 1
-    assert len(body["laps"]) == 1
-
-
-@mock_aws
-def test_response_counts_drivers_and_laps(ingest_mod, mocker):
-    _mock_requests(mocker, drivers=[_DRIVER, _DRIVER], laps=[_LAP, _LAP, _LAP])
-    result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
-    assert result["statusCode"] == 200
+    assert result["statusCode"] == 202
     body = json.loads(result["body"])
-    assert body["drivers_fetched"] == 2
-    assert body["laps_fetched"] == 3
+    assert body["status"] == "accepted"
+    assert body["session_key"] == "9158"
+
+    eb.put_events.assert_called_once()
+    entries = eb.put_events.call_args.kwargs["Entries"]
+    assert entries[0]["Source"] == "racetrack"
+    assert entries[0]["DetailType"] == "IngestRequested"
+    assert json.loads(entries[0]["Detail"])["session_key"] == "9158"
 
 
-@mock_aws
-def test_empty_sessions_returns_404(ingest_mod, mocker):
-    _mock_requests(mocker, sessions=[], drivers=[], laps=[])
-    result = ingest_mod.handler({"queryStringParameters": {"session_key": "9999"}}, None)
-    assert result["statusCode"] == 404
-
-
-@mock_aws
-def test_openf1_timeout_returns_502(ingest_mod, mocker):
-    import requests as req_lib
-    mocker.patch("requests.get", side_effect=req_lib.exceptions.Timeout)
+def test_eventbridge_failure_returns_500(ingest_mod, mocker):
+    eb = _patch_events(ingest_mod, mocker)
+    eb.put_events.side_effect = RuntimeError("boom")
     result = ingest_mod.handler({"queryStringParameters": {"session_key": "9158"}}, None)
-    assert result["statusCode"] == 502
-    assert "timeout" in result["body"].lower()
+    assert result["statusCode"] == 500

@@ -30,6 +30,24 @@ module "ingest_session" {
   tags               = local.common_tags
 
   environment_variables = {
+    EVENTS_ENDPOINT = ""
+  }
+}
+
+# Heavy async worker: triggered by EventBridge (IngestRequested). Fetches from
+# OpenF1 and writes to S3, so it needs a long timeout (not bound by API Gateway).
+module "ingest_worker" {
+  source = "./modules/lambda"
+
+  function_name      = local.fn.ingest_worker
+  role_arn           = aws_iam_role.lambda_exec.arn
+  runtime            = var.lambda_runtime
+  timeout            = 900
+  memory_size        = 512
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+
+  environment_variables = {
     S3_BUCKET_NAME  = aws_s3_bucket.sessions.id
     S3_ENDPOINT     = ""
     EVENTS_ENDPOINT = ""
@@ -108,6 +126,22 @@ module "driver_laps" {
   environment_variables = local.db_env_vars
 }
 
+module "start_simulation" {
+  source = "./modules/lambda"
+
+  function_name      = local.fn.start_simulation
+  role_arn           = aws_iam_role.lambda_exec.arn
+  runtime            = var.lambda_runtime
+  timeout            = var.lambda_timeout
+  memory_size        = var.lambda_memory_size
+  log_retention_days = var.log_retention_days
+  tags               = local.common_tags
+
+  environment_variables = merge(local.db_env_vars, {
+    SQS_QUEUE_URL = aws_sqs_queue.simulation.url
+  })
+}
+
 # ── API Gateway ───────────────────────────────────────────────────────────────
 
 module "api_gateway" {
@@ -138,11 +172,28 @@ module "api_gateway" {
       invoke_arn    = module.driver_laps.invoke_arn
       function_name = module.driver_laps.function_name
     }
+    "POST /start-simulation" = {
+      invoke_arn    = module.start_simulation.invoke_arn
+      function_name = module.start_simulation.function_name
+    }
   }
 }
 
 # ── EventBridge ───────────────────────────────────────────────────────────────
 
+# IngestRequested (fired by ingest_session) → ingest_worker
+module "eventbridge_ingest_requested" {
+  source = "./modules/eventbridge"
+
+  rule_name            = "${local.prefix}-ingest-requested"
+  event_source         = "racetrack"
+  detail_type          = "IngestRequested"
+  target_function_arn  = module.ingest_worker.function_arn
+  target_function_name = module.ingest_worker.function_name
+  tags                 = local.common_tags
+}
+
+# SessionIngested (fired by ingest_worker) → save_session
 module "eventbridge" {
   source = "./modules/eventbridge"
 

@@ -58,7 +58,7 @@ jobs:
         run: |
           REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
           ENV="prod"
-          for LAMBDA in ingest_session save_session list_session list_drivers driver_summary driver_laps; do
+          for LAMBDA in ingest_session ingest_worker save_session list_session list_drivers driver_summary driver_laps start_simulation; do
             FUNCTION_NAME="racetrack-${ENV}-${LAMBDA//_/-}"
             echo "▶ Packaging ${FUNCTION_NAME}"
             cd "project/lambdas/${LAMBDA}"
@@ -77,6 +77,54 @@ jobs:
             rm -rf dist function.zip
             cd ../../..
             echo "✓ ${FUNCTION_NAME} deployed"
+          done
+
+  deploy-containers-prod:
+    name: Build & push containers (prod)
+    runs-on: ubuntu-latest
+    needs: terraform-apply-prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+      - name: Build, push & roll out containers
+        run: |
+          set -euo pipefail
+          REGION="${{ vars.AWS_REGION || 'us-east-1' }}"
+          ENV="prod"
+          SHA="${GITHUB_SHA::12}"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
+          aws ecr get-login-password --region "${REGION}" \
+            | docker login --username AWS --password-stdin "${REGISTRY}"
+
+          # service dir -> ECR repo suffix
+          declare -A SERVICES=( [f1_consumer]=f1-consumer [metrics_exporter]=metrics-exporter )
+          for DIR in "${!SERVICES[@]}"; do
+            SUFFIX="${SERVICES[$DIR]}"
+            REPO="${REGISTRY}/racetrack-${ENV}-${SUFFIX}"
+            echo "▶ Building ${REPO}"
+            docker build -t "${REPO}:${SHA}" -t "${REPO}:latest" "project/containers/${DIR}"
+            docker push "${REPO}:${SHA}"
+            docker push "${REPO}:latest"
+            # Roll the service if it exists (enable_ecs may still be false on first deploys).
+            SERVICE="racetrack-${ENV}-${SUFFIX}"
+            CLUSTER="racetrack-${ENV}-cluster"
+            STATUS=$(aws ecs describe-services --cluster "${CLUSTER}" --services "${SERVICE}" \
+              --region "${REGION}" --query 'services[0].status' --output text 2>/dev/null || echo "MISSING")
+            if [ "${STATUS}" = "ACTIVE" ]; then
+              aws ecs update-service --cluster "${CLUSTER}" --service "${SERVICE}" \
+                --force-new-deployment --region "${REGION}" --output text
+              echo "✓ ${SERVICE} redeployed"
+            else
+              echo "↷ ${SERVICE} not active (enable_ecs may be false); pushed image only"
+            fi
           done
 
   run-e2e-tests:
@@ -118,3 +166,30 @@ jobs:
         run: python -m pytest project/tests/ -v --tb=short -m "e2e"
         env:
           API_BASE_URL: ${{ steps.api.outputs.url }}
+
+  tag-release:
+    name: Tag prod release
+    runs-on: ubuntu-latest
+    # Only tag once the full prod deploy (infra + lambdas + containers + e2e) is green.
+    needs: run-e2e-tests
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag the deployed commit with version_<VERSION>
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d ' \t\n\r' < VERSION)"
+          TAG="version_${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "↷ ${TAG} already exists — bump VERSION for a new release. Skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Prod deploy ${TAG} (${GITHUB_SHA})"
+          git push origin "${TAG}"
+          echo "✓ tagged prod deploy as ${TAG}"
