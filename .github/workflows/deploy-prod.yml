@@ -166,3 +166,30 @@ jobs:
         run: python -m pytest project/tests/ -v --tb=short -m "e2e"
         env:
           API_BASE_URL: ${{ steps.api.outputs.url }}
+
+  tag-release:
+    name: Tag prod release
+    runs-on: ubuntu-latest
+    # Only tag once the full prod deploy (infra + lambdas + containers + e2e) is green.
+    needs: run-e2e-tests
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Tag the deployed commit with version_<VERSION>
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d ' \t\n\r' < VERSION)"
+          TAG="version_${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "↷ ${TAG} already exists — bump VERSION for a new release. Skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "Prod deploy ${TAG} (${GITHUB_SHA})"
+          git push origin "${TAG}"
+          echo "✓ tagged prod deploy as ${TAG}"
