@@ -18,7 +18,9 @@ _DB_OK = (200, 404, 500)
 def test_ingest_then_list_pipeline(api_base, http):
     """Trigger ingest and confirm the session appears in /sessions afterwards."""
     ingest_r = http.get(f"{api_base}/ingest", params={"session_key": _SESSION_KEY}, timeout=60)
-    assert ingest_r.status_code == 200, f"Ingest failed: {ingest_r.text}"
+    # Ingestion is async: ingest_session fires an EventBridge event and returns
+    # 202 Accepted immediately (the worker + save_session populate data later).
+    assert ingest_r.status_code in (200, 202), f"Ingest failed: {ingest_r.text}"
 
     time.sleep(5)
 
