@@ -28,3 +28,29 @@ output "simulation_queue_url" {
   value       = aws_sqs_queue.simulation.url
   description = "URL of the SQS queue that start_simulation publishes bucket messages to"
 }
+
+output "metrics_table_name" {
+  value       = aws_dynamodb_table.simulation_metrics.name
+  description = "DynamoDB table holding per-bucket simulation metrics"
+}
+
+output "ecr_repository_urls" {
+  value = {
+    f1_consumer      = aws_ecr_repository.services["f1_consumer"].repository_url
+    metrics_exporter = aws_ecr_repository.services["metrics_exporter"].repository_url
+  }
+  description = "ECR repo URLs to push the container images to"
+}
+
+output "ecs_cluster_name" {
+  value       = var.enable_ecs ? aws_ecs_cluster.main[0].name : null
+  description = "ECS cluster name (null until enable_ecs=true)"
+}
+
+output "ecs_service_names" {
+  value = var.enable_ecs ? {
+    f1_consumer      = aws_ecs_service.f1_consumer[0].name
+    metrics_exporter = aws_ecs_service.metrics_exporter[0].name
+  } : null
+  description = "ECS service names (null until enable_ecs=true)"
+}

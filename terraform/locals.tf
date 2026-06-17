@@ -22,6 +22,15 @@ locals {
     start_simulation = "${local.prefix}-start-simulation"
   }
 
+  # DynamoDB single table holding per-bucket simulation metrics
+  metrics_table_name = "${local.prefix}-simulation-metrics"
+
+  # ECR repositories for the long-running container services
+  ecr_repos = {
+    f1_consumer      = "${local.prefix}-f1-consumer"
+    metrics_exporter = "${local.prefix}-metrics-exporter"
+  }
+
   db_env_vars = {
     DB_HOST     = aws_db_instance.racetrack.address
     DB_PORT     = tostring(var.db_port)

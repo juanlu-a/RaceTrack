@@ -88,3 +88,55 @@ variable "log_retention_days" {
   type    = number
   default = 14
 }
+
+# ── ECS / containers (f1-consumer + metrics-exporter) ────────────────────────
+
+variable "enable_ecs" {
+  type        = bool
+  description = "Create the ECS cluster + services. Keep false until the first container images are pushed to ECR, then flip to true."
+  default     = false
+}
+
+variable "consumer_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "exporter_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "ecs_cpu" {
+  type    = number
+  default = 256
+}
+
+variable "ecs_memory" {
+  type    = number
+  default = 512
+}
+
+variable "metrics_port" {
+  type        = number
+  description = "Port the metrics-exporter serves Prometheus /metrics on"
+  default     = 9100
+}
+
+variable "dynamodb_ttl_days" {
+  type        = number
+  description = "Days before a simulation's metrics items auto-expire via TTL"
+  default     = 7
+}
+
+variable "ecr_keep_last_images" {
+  type        = number
+  description = "Number of most-recent images to retain per ECR repository"
+  default     = 10
+}
+
+variable "metrics_scrape_cidrs" {
+  type        = list(string)
+  description = "CIDR blocks allowed to scrape the metrics-exporter on metrics_port"
+  default     = ["0.0.0.0/0"]
+}
