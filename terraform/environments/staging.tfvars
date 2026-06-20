@@ -28,7 +28,7 @@ log_retention_days = 7
 # and services can be created with real images (no crash-loop).
 enable_ecs = true
 
-# Prometheus + Grafana on Fargate. Keep false until the prometheus/grafana
-# images are pushed to ECR; flip to true to run the monitoring stack (adds
-# ~2 Fargate tasks + public IPs). Requires enable_ecs = true.
-enable_monitoring = false
+# Prometheus + Grafana on Fargate. Temporarily ON for a short demo window
+# (~$0.83/day: 2 Fargate tasks + 2 public IPs). Images are already in ECR.
+# Requires enable_ecs = true. Flip back to false when the demo window ends.
+enable_monitoring = true
