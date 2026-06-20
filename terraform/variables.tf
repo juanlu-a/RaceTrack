@@ -135,12 +135,6 @@ variable "ecr_keep_last_images" {
   default     = 10
 }
 
-variable "metrics_scrape_cidrs" {
-  type        = list(string)
-  description = "CIDR blocks allowed to scrape the metrics-exporter on metrics_port"
-  default     = ["0.0.0.0/0"]
-}
-
 # ── Monitoring (Prometheus + Grafana on ECS) ─────────────────────────────────
 
 variable "enable_monitoring" {

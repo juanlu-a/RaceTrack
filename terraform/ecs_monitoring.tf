@@ -36,21 +36,15 @@ resource "aws_cloudwatch_log_group" "grafana" {
   tags              = local.common_tags
 }
 
-# One SG for both monitoring services: external access to the two UIs, plus
-# self-referential ingress so Grafana can reach Prometheus over Service Connect.
+# One SG for both monitoring services. Only Grafana's UI is exposed publicly;
+# Prometheus is NOT internet-reachable — Grafana queries it over the internal
+# self-referential rule (Service Connect, same SG). This shrinks the public
+# attack surface to just the password-protected Grafana UI.
 resource "aws_security_group" "monitoring" {
   count       = var.enable_monitoring ? 1 : 0
   name        = "${local.prefix}-monitoring-sg"
-  description = "Prometheus + Grafana UIs and internal scrape/query traffic"
+  description = "Grafana UI (public) + internal Prometheus query/scrape traffic"
   vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    description = "Prometheus UI"
-    from_port   = var.prometheus_port
-    to_port     = var.prometheus_port
-    protocol    = "tcp"
-    cidr_blocks = var.monitoring_ingress_cidrs
-  }
 
   ingress {
     description = "Grafana UI"
@@ -61,7 +55,7 @@ resource "aws_security_group" "monitoring" {
   }
 
   ingress {
-    description = "Internal Service Connect traffic between monitoring tasks"
+    description = "Internal Service Connect traffic between monitoring tasks (Grafana -> Prometheus)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -165,8 +159,7 @@ resource "aws_ecs_task_definition" "grafana" {
     }]
     environment = [
       { name = "GF_SECURITY_ADMIN_PASSWORD", value = var.grafana_admin_password },
-      { name = "GF_AUTH_ANONYMOUS_ENABLED", value = "true" },
-      { name = "GF_AUTH_ANONYMOUS_ORG_ROLE", value = "Viewer" },
+      { name = "GF_AUTH_ANONYMOUS_ENABLED", value = "false" },
       { name = "GF_SERVER_HTTP_PORT", value = tostring(var.grafana_port) },
     ]
     logConfiguration = {
