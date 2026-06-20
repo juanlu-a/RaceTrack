@@ -1,0 +1,12 @@
+# Auto-provisioned Prometheus datasource. The URL "prometheus:9090" resolves
+# via the docker-compose service name locally and via ECS Service Connect in AWS.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: racetrack-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

@@ -27,3 +27,7 @@ log_retention_days = 14
 # Keep enable_ecs = false until the first images are pushed to ECR, then set it
 # to true so the cluster/services are created with real images (no crash-loop).
 enable_ecs = false
+
+# Prometheus + Grafana on Fargate. Requires enable_ecs = true and the
+# prometheus/grafana images in ECR. Keep false until then.
+enable_monitoring = false

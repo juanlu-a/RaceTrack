@@ -35,10 +35,7 @@ output "metrics_table_name" {
 }
 
 output "ecr_repository_urls" {
-  value = {
-    f1_consumer      = aws_ecr_repository.services["f1_consumer"].repository_url
-    metrics_exporter = aws_ecr_repository.services["metrics_exporter"].repository_url
-  }
+  value       = { for k, repo in aws_ecr_repository.services : k => repo.repository_url }
   description = "ECR repo URLs to push the container images to"
 }
 
@@ -53,4 +50,12 @@ output "ecs_service_names" {
     metrics_exporter = aws_ecs_service.metrics_exporter[0].name
   } : null
   description = "ECS service names (null until enable_ecs=true)"
+}
+
+output "monitoring_service_names" {
+  value = var.enable_monitoring ? {
+    prometheus = aws_ecs_service.prometheus[0].name
+    grafana    = aws_ecs_service.grafana[0].name
+  } : null
+  description = "Prometheus/Grafana ECS service names (null until enable_monitoring=true). Reach the UIs at each task's public IP — Grafana on grafana_port, Prometheus on prometheus_port."
 }

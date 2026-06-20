@@ -24,6 +24,11 @@ lambda_runtime     = "python3.9"
 log_retention_days = 7
 
 # ECS containers (f1-consumer + metrics-exporter).
-# Keep enable_ecs = false until the first images are pushed to ECR, then set it
-# to true so the cluster/services are created with real images (no crash-loop).
-enable_ecs = false
+# Images are already published to ECR by prior staging deploys, so the cluster
+# and services can be created with real images (no crash-loop).
+enable_ecs = true
+
+# Prometheus + Grafana on Fargate. Temporarily ON for a short demo window
+# (~$0.83/day: 2 Fargate tasks + 2 public IPs). Images are already in ECR.
+# Requires enable_ecs = true. Flip back to false when the demo window ends.
+enable_monitoring = true

@@ -104,13 +104,18 @@ jobs:
           aws ecr get-login-password --region "${REGION}" \
             | docker login --username AWS --password-stdin "${REGISTRY}"
 
-          # service dir -> ECR repo suffix
-          declare -A SERVICES=( [f1_consumer]=f1-consumer [metrics_exporter]=metrics-exporter )
-          for DIR in "${!SERVICES[@]}"; do
-            SUFFIX="${SERVICES[$DIR]}"
+          # ECR repo suffix -> docker build context
+          declare -A SERVICES=(
+            [f1-consumer]=project/containers/f1_consumer
+            [metrics-exporter]=project/containers/metrics_exporter
+            [prometheus]=project/monitoring/prometheus
+            [grafana]=project/monitoring/grafana
+          )
+          for SUFFIX in "${!SERVICES[@]}"; do
+            CONTEXT="${SERVICES[$SUFFIX]}"
             REPO="${REGISTRY}/racetrack-${ENV}-${SUFFIX}"
             echo "▶ Building ${REPO}"
-            docker build -t "${REPO}:${SHA}" -t "${REPO}:latest" "project/containers/${DIR}"
+            docker build -t "${REPO}:${SHA}" -t "${REPO}:latest" "${CONTEXT}"
             docker push "${REPO}:${SHA}"
             docker push "${REPO}:latest"
             # Roll the service if it exists (enable_ecs may still be false on first deploys).

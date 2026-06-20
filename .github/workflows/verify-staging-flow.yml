@@ -1,0 +1,198 @@
+name: Verify Staging Flow (→ metrics-exporter)
+
+# Manually-triggered end-to-end check of the simulation pipeline on AWS staging:
+#   GET /ingest  ->  save_session (RDS session_events)
+#   POST /start-simulation  ->  SQS bucket messages
+#   f1-consumer (ECS)  ->  DynamoDB simulation-metrics
+#   metrics-exporter (ECS)  ->  GET /metrics (Prometheus gauges)
+#
+# Requires enable_ecs = true in staging so the f1-consumer + metrics-exporter
+# Fargate services exist. Run from the Actions tab (workflow_dispatch).
+
+on:
+  workflow_dispatch:
+    inputs:
+      session_key:
+        description: "OpenF1 session_key to ingest & simulate"
+        default: "9158"
+      simulation_duration_seconds:
+        description: "Sim duration (metadata; drives exporter clock speed)"
+        default: "60"
+      reingest:
+        description: "Force a fresh /ingest before simulating"
+        type: boolean
+        default: true
+
+jobs:
+  verify:
+    name: End-to-end verify (staging)
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      ENVNAME: staging
+      SESSION_KEY: ${{ inputs.session_key }}
+      SIM_DURATION: ${{ inputs.simulation_duration_seconds }}
+      METRICS_PORT: "9100"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.x"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve infra outputs from Terraform state
+        id: tf
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          cd terraform
+          terraform init -backend-config="key=staging/terraform.tfstate" -input=false >/dev/null
+          API=$(terraform output -raw api_endpoint)
+          TABLE=$(terraform output -raw metrics_table_name)
+          {
+            echo "api=${API%/}"
+            echo "table=${TABLE}"
+          } >> "$GITHUB_OUTPUT"
+          echo "API endpoint : ${API}"
+          echo "Metrics table: ${TABLE}"
+
+      - name: Verify ECS services are RUNNING
+        run: |
+          set -euo pipefail
+          CLUSTER="racetrack-${ENVNAME}-cluster"
+          for SVC in f1-consumer metrics-exporter; do
+            SERVICE="racetrack-${ENVNAME}-${SVC}"
+            ok=""
+            for i in $(seq 1 30); do
+              read -r RUNNING DESIRED STATUS < <(aws ecs describe-services \
+                --cluster "$CLUSTER" --services "$SERVICE" --region "$AWS_REGION" \
+                --query 'services[0].[runningCount,desiredCount,status]' --output text 2>/dev/null || echo "0 0 MISSING")
+              echo "[$SERVICE] status=$STATUS running=$RUNNING desired=$DESIRED (try $i/30)"
+              if [ "$STATUS" = "ACTIVE" ] && [ "${RUNNING:-0}" -ge 1 ]; then ok=1; break; fi
+              sleep 10
+            done
+            if [ -z "$ok" ]; then
+              echo "::error::ECS service $SERVICE is not running. Is enable_ecs=true deployed?"
+              exit 1
+            fi
+            echo "✓ $SERVICE is ACTIVE with a running task"
+          done
+
+      - name: Ingest session and wait until queryable
+        if: ${{ inputs.reingest == true }}
+        run: |
+          set -euo pipefail
+          API="${{ steps.tf.outputs.api }}"
+          echo "▶ GET ${API}/ingest?session_key=${SESSION_KEY}"
+          curl -sS -o /tmp/ingest.json -w "HTTP %{http_code}\n" \
+            "${API}/ingest?session_key=${SESSION_KEY}" || true
+          cat /tmp/ingest.json; echo
+          echo "Waiting for save_session to populate RDS (async via EventBridge)..."
+          for i in $(seq 1 40); do
+            CODE=$(curl -sS -o /tmp/drivers.json -w "%{http_code}" \
+              "${API}/drivers?session_key=${SESSION_KEY}" || echo 000)
+            COUNT=$(jq -r '(.pilotCount // (.pilots | length) // 0)' /tmp/drivers.json 2>/dev/null || echo 0)
+            echo "drivers HTTP=$CODE pilotCount=$COUNT (try $i/40)"
+            if [ "$CODE" = "200" ] && [ "${COUNT:-0}" -ge 1 ]; then
+              echo "✓ session ${SESSION_KEY} is queryable"; break
+            fi
+            sleep 15
+          done
+
+      - name: Start simulation
+        id: sim
+        run: |
+          set -euo pipefail
+          API="${{ steps.tf.outputs.api }}"
+          BODY="{\"session_id\":\"${SESSION_KEY}\",\"simulation_duration_seconds\":${SIM_DURATION}}"
+          echo "▶ POST ${API}/start-simulation  ${BODY}"
+          CODE=$(curl -sS -o /tmp/sim.json -w "%{http_code}" \
+            -X POST "${API}/start-simulation" \
+            -H "Content-Type: application/json" -d "$BODY" || echo 000)
+          echo "HTTP $CODE"; cat /tmp/sim.json; echo
+          SIM_ID=$(jq -r '.simulation_id // empty' /tmp/sim.json 2>/dev/null || echo "")
+          if [ "$CODE" != "202" ] || [ -z "$SIM_ID" ]; then
+            echo "::error::start-simulation did not return 202 + simulation_id (got HTTP $CODE)."
+            exit 1
+          fi
+          echo "sim_id=$SIM_ID" >> "$GITHUB_OUTPUT"
+          echo "✓ simulation_id=$SIM_ID"
+
+      - name: Verify f1-consumer wrote buckets to DynamoDB
+        run: |
+          set -euo pipefail
+          TABLE="${{ steps.tf.outputs.table }}"
+          SIM_ID="${{ steps.sim.outputs.sim_id }}"
+          ok=""
+          for i in $(seq 1 40); do
+            COUNT=$(aws dynamodb query --table-name "$TABLE" --region "$AWS_REGION" \
+              --key-condition-expression "PK = :pk AND begins_with(SK, :sk)" \
+              --expression-attribute-values "{\":pk\":{\"S\":\"SIM#${SIM_ID}\"},\":sk\":{\"S\":\"BUCKET#\"}}" \
+              --select COUNT --query 'Count' --output text 2>/dev/null || echo 0)
+            echo "DynamoDB bucket items for SIM#${SIM_ID}: ${COUNT} (try $i/40)"
+            if [ "${COUNT:-0}" -ge 1 ]; then ok=1; break; fi
+            sleep 10
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::No BUCKET items in DynamoDB — f1-consumer is not draining SQS."
+            exit 1
+          fi
+          echo "✓ f1-consumer wrote bucket metrics to DynamoDB"
+
+      - name: Verify metrics-exporter serves /metrics
+        run: |
+          set -euo pipefail
+          CLUSTER="racetrack-${ENVNAME}-cluster"
+          SERVICE="racetrack-${ENVNAME}-metrics-exporter"
+          SIM_ID="${{ steps.sim.outputs.sim_id }}"
+
+          TASK_ARN=$(aws ecs list-tasks --cluster "$CLUSTER" --service-name "$SERVICE" \
+            --desired-status RUNNING --region "$AWS_REGION" \
+            --query 'taskArns[0]' --output text)
+          echo "task: $TASK_ARN"
+          ENI=$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$TASK_ARN" --region "$AWS_REGION" \
+            --query "tasks[0].attachments[0].details[?name=='networkInterfaceId'].value | [0]" --output text)
+          IP=$(aws ec2 describe-network-interfaces --network-interface-ids "$ENI" --region "$AWS_REGION" \
+            --query 'NetworkInterfaces[0].Association.PublicIp' --output text)
+          echo "exporter public IP: $IP"
+          if [ -z "$IP" ] || [ "$IP" = "None" ]; then
+            echo "::error::Could not resolve metrics-exporter public IP."; exit 1
+          fi
+
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -sS --max-time 8 "http://${IP}:${METRICS_PORT}/metrics" -o /tmp/metrics.txt; then
+              RACE=$(grep -c "f1_simulation_race_time_seconds{simulation_id=\"${SIM_ID}\"" /tmp/metrics.txt || true)
+              DRV=$(grep -c "^f1_driver_.*simulation_id=\"${SIM_ID}\"" /tmp/metrics.txt || true)
+              echo "scrape try $i/30: race_time_lines=$RACE driver_lines=$DRV"
+              if [ "${RACE:-0}" -ge 1 ] && [ "${DRV:-0}" -ge 1 ]; then ok=1; break; fi
+            else
+              echo "scrape try $i/30: /metrics not reachable yet"
+            fi
+            sleep 10
+          done
+
+          echo "----- sample of /metrics (f1_* lines) -----"
+          grep "^f1_" /tmp/metrics.txt | head -40 || true
+          echo "-------------------------------------------"
+          if [ -z "$ok" ]; then
+            echo "::error::metrics-exporter did not expose gauges for simulation ${SIM_ID}."
+            exit 1
+          fi
+          echo "✓ metrics-exporter is serving live gauges for simulation ${SIM_ID}"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Staging flow verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "- session_key: \`${SESSION_KEY}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- simulation_id: \`${{ steps.sim.outputs.sim_id }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- result: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
