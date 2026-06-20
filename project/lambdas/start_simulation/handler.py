@@ -96,11 +96,19 @@ def _parse_body(event) -> dict:
 def _build_buckets(rows):
     """Group ordered rows into 10s race-time buckets keyed by bucket_index.
 
-    Returns (t0, ordered_list_of_(bucket_index, events)).
+    Some OpenF1 datasets (and their save_session fallbacks) produce events with a
+    NULL timestamp; those can't be placed on the race-time axis, so they are
+    skipped instead of crashing the arithmetic below.
+
+    Returns (t0, ordered_list_of_(bucket_index, events)); t0 is None and the list
+    empty when no row carries a usable timestamp.
     """
-    t0 = rows[0]["timestamp"]
+    timed_rows = [r for r in rows if r.get("timestamp") is not None]
+    if not timed_rows:
+        return None, []
+    t0 = timed_rows[0]["timestamp"]
     buckets = {}
-    for r in rows:
+    for r in timed_rows:
         ts = r["timestamp"]
         bucket_index = int((ts - t0).total_seconds() // BUCKET_SECONDS)
         buckets.setdefault(bucket_index, []).append({
@@ -156,7 +164,17 @@ def handler(event, context):
             "hint": f"Run GET /ingest?session_key={session_id} first",
         })
 
-    t0, ordered_buckets = _build_buckets(rows)
+    try:
+        t0, ordered_buckets = _build_buckets(rows)
+    except Exception as e:
+        return _json_response(500, {"error": "Failed to build simulation buckets", "details": str(e)})
+
+    if not ordered_buckets:
+        return _json_response(404, {
+            "error": f"No timestamped events for session '{session_id}'",
+            "hint": "The session has events but none carry a usable timestamp.",
+        })
+
     simulation_id = str(uuid.uuid4())
 
     # Build one SQS entry per bucket; chronological position k drives DelaySeconds.
