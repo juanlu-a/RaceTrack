@@ -1,0 +1,248 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["racetrack", "f1"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+        "definition": "label_values(f1_simulation_race_time_seconds, simulation_id)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Simulation",
+        "multi": false,
+        "name": "simulation_id",
+        "options": [],
+        "query": {
+          "query": "label_values(f1_simulation_race_time_seconds, simulation_id)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-15m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RaceTrack — F1 Telemetry",
+  "uid": "racetrack-f1",
+  "version": 1,
+  "weekStart": "",
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "max": 1,
+          "min": 0,
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Race progress",
+      "type": "gauge",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_simulation_progress_ratio{simulation_id=\"$simulation_id\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" }, "unit": "s", "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Race time (s)",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_simulation_race_time_seconds{simulation_id=\"$simulation_id\"}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "custom": { "displayMode": "color-text" }, "unit": "none", "thresholds": { "mode": "absolute", "steps": [{ "color": "text", "value": null }] } },
+        "overrides": []
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "id": 3,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Position", "desc": false }]
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Current standings",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_position{simulation_id=\"$simulation_id\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "simulation_id": true }, "renameByName": { "driver_id": "Driver", "Value": "Position" } } }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 5, "showPoints": "never" }, "unit": "velocitykmh" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "id": 4,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "pluginVersion": "11.2.0",
+      "title": "Driver speed (km/h)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_speed_kmh{simulation_id=\"$simulation_id\"}",
+          "legendFormat": "#{{driver_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }, "unit": "s" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "id": 5,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "asc" } },
+      "pluginVersion": "11.2.0",
+      "title": "Gap to leader (s)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_gap_to_leader_seconds{simulation_id=\"$simulation_id\"}",
+          "legendFormat": "#{{driver_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "stepInterval": "" }, "unit": "none", "decimals": 0 },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "id": 6,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "asc" } },
+      "pluginVersion": "11.2.0",
+      "title": "Position over time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_position{simulation_id=\"$simulation_id\"}",
+          "legendFormat": "#{{driver_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "points", "pointSize": 6, "showPoints": "always", "lineWidth": 0, "scaleDistribution": { "type": "linear" } }, "unit": "none" },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "id": 7,
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "mapping": "manual",
+        "series": [],
+        "tooltip": { "mode": "single", "sort": "none" },
+        "xField": "track_x"
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Track position (x / y)",
+      "type": "xychart",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_track_x{simulation_id=\"$simulation_id\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "track_x",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_track_y{simulation_id=\"$simulation_id\"}",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "track_y",
+          "refId": "B"
+        }
+      ]
+    }
+  ]
+}
