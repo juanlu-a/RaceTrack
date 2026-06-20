@@ -24,6 +24,6 @@ lambda_runtime     = "python3.9"
 log_retention_days = 7
 
 # ECS containers (f1-consumer + metrics-exporter).
-# Keep enable_ecs = false until the first images are pushed to ECR, then set it
-# to true so the cluster/services are created with real images (no crash-loop).
-enable_ecs = false
+# Images are already published to ECR by prior staging deploys, so the cluster
+# and services can be created with real images (no crash-loop).
+enable_ecs = true
