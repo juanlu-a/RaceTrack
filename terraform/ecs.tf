@@ -115,6 +115,7 @@ resource "aws_ecs_task_definition" "metrics_exporter" {
     image     = "${aws_ecr_repository.services["metrics_exporter"].repository_url}:${var.exporter_image_tag}"
     essential = true
     portMappings = [{
+      name          = "metrics"
       containerPort = var.metrics_port
       protocol      = "tcp"
     }]
@@ -165,6 +166,24 @@ resource "aws_ecs_service" "metrics_exporter" {
     subnets          = data.aws_subnets.default.ids
     security_groups  = [aws_security_group.ecs_exporter[0].id]
     assign_public_ip = true
+  }
+
+  # When monitoring is on, advertise the exporter via Service Connect so
+  # Prometheus can scrape it at the stable name "metrics-exporter:<metrics_port>".
+  dynamic "service_connect_configuration" {
+    for_each = var.enable_monitoring ? [1] : []
+    content {
+      enabled   = true
+      namespace = aws_service_discovery_http_namespace.monitoring[0].arn
+      service {
+        port_name      = "metrics"
+        discovery_name = "metrics-exporter"
+        client_alias {
+          port     = var.metrics_port
+          dns_name = "metrics-exporter"
+        }
+      }
+    }
   }
 
   tags = local.common_tags

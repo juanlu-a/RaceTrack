@@ -140,3 +140,46 @@ variable "metrics_scrape_cidrs" {
   description = "CIDR blocks allowed to scrape the metrics-exporter on metrics_port"
   default     = ["0.0.0.0/0"]
 }
+
+# ── Monitoring (Prometheus + Grafana on ECS) ─────────────────────────────────
+
+variable "enable_monitoring" {
+  type        = bool
+  description = "Create the Prometheus + Grafana Fargate services. Requires enable_ecs=true (Prometheus scrapes the metrics-exporter via Service Connect). Keep false until the prometheus/grafana images are pushed to ECR."
+  default     = false
+}
+
+variable "prometheus_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "grafana_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+variable "prometheus_port" {
+  type        = number
+  description = "Port Prometheus serves on"
+  default     = 9090
+}
+
+variable "grafana_port" {
+  type        = number
+  description = "Port Grafana serves the UI on"
+  default     = 3000
+}
+
+variable "monitoring_ingress_cidrs" {
+  type        = list(string)
+  description = "CIDR blocks allowed to reach the Prometheus (prometheus_port) and Grafana (grafana_port) UIs"
+  default     = ["0.0.0.0/0"]
+}
+
+variable "grafana_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "Grafana admin password — injected via TF_VAR_grafana_admin_password in CI"
+  default     = "admin"
+}

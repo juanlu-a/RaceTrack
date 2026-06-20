@@ -25,10 +25,12 @@ locals {
   # DynamoDB single table holding per-bucket simulation metrics
   metrics_table_name = "${local.prefix}-simulation-metrics"
 
-  # ECR repositories for the long-running container services
+  # ECR repositories for the long-running container services + monitoring stack
   ecr_repos = {
     f1_consumer      = "${local.prefix}-f1-consumer"
     metrics_exporter = "${local.prefix}-metrics-exporter"
+    prometheus       = "${local.prefix}-prometheus"
+    grafana          = "${local.prefix}-grafana"
   }
 
   db_env_vars = {
