@@ -43,7 +43,10 @@ resource "aws_cloudwatch_log_group" "grafana" {
 resource "aws_security_group" "monitoring" {
   count       = var.enable_monitoring ? 1 : 0
   name        = "${local.prefix}-monitoring-sg"
-  description = "Grafana UI (public) + internal Prometheus query/scrape traffic"
+  # NOTE: keep this string stable — an SG description is immutable, so changing
+  # it forces a replace of an in-use SG (DependencyViolation). Behaviour is set
+  # by the ingress rules below, not this text.
+  description = "Prometheus + Grafana UIs and internal scrape/query traffic"
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
