@@ -45,7 +45,7 @@ BUCKET_SECONDS = 10
 # Fixed step (seconds) between consecutive buckets, used only for
 # ordering/throttling: the bucket at chronological position k is published with
 # DelaySeconds = min(900, k * DELAY_STEP_SECONDS). NOT the real race duration.
-DELAY_STEP_SECONDS = 1
+DELAY_STEP_SECONDS = int(os.environ.get("DELAY_STEP_SECONDS", "1"))
 # AWS hard cap for SQS DelaySeconds (15 minutes).
 MAX_DELAY_SECONDS = 900
 # SQS allows at most 10 entries per send_message_batch call.
