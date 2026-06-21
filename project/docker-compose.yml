@@ -10,7 +10,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=s3,events,lambda,iam,dynamodb
+      - SERVICES=s3,events,lambda,iam,dynamodb,sqs
       - DEFAULT_REGION=us-east-1
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
@@ -41,10 +41,29 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Simulation consumer (SQS -> DynamoDB) ─────────────────────────────────
+  # Requires: make setup-simulation (creates queue + table + .local/simulation.env)
+  f1-consumer:
+    build: ./containers/f1_consumer
+    networks:
+      - racetrack
+    environment:
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/racetrack-local-simulation-events
+      - SQS_ENDPOINT=http://localstack:4566
+      - DYNAMODB_TABLE=racetrack-local-simulation-metrics
+      - DYNAMODB_ENDPOINT=http://localstack:4566
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - TTL_DAYS=7
+    restart: unless-stopped
+    depends_on:
+      localstack:
+        condition: service_healthy
+
   # ── Observability tail: metrics-exporter -> prometheus -> grafana ──────────
   # metrics-exporter reads simulation buckets from DynamoDB (LocalStack) and
-  # serves Prometheus gauges on :9100. To see live data, run the full pipeline
-  # so f1-consumer populates the racetrack-local-simulation-metrics table.
+  # serves Prometheus gauges on :9100. Run `make demo-simulation` to populate data.
   metrics-exporter:
     build: ./containers/metrics_exporter
     networks:

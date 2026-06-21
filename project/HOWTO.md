@@ -389,6 +389,69 @@ curl "http://localhost:3000/driver-laps?session_key=9158&driver_number=1"
 
 ---
 
+## Local simulation + Grafana (full pipeline)
+
+Grafana at http://localhost:3001 shows **simulation telemetry**, not API/RDS data. To populate it locally you need the full chain:
+
+```
+ingest → save_session → start_simulation → SQS → f1-consumer → DynamoDB
+    → metrics-exporter → Prometheus → Grafana
+```
+
+### Three terminals
+
+**Terminal 1 — bootstrap (once, or after `make stop`):**
+
+```bash
+cd project/
+make all
+# teammates with credential issues: make all PROFILE=um_aws
+```
+
+**Terminal 2 — local API:**
+
+```bash
+cd project/
+make start-api
+```
+
+**Terminal 3 — ingest + simulate:**
+
+```bash
+cd project/
+make demo-simulation
+# optional: SESSION_KEY=9158 SIM_DURATION=120 make demo-simulation
+```
+
+`demo-simulation` will:
+1. `GET /ingest?session_key=9158` (async OpenF1 fetch via EventBridge)
+2. Wait until `/drivers` returns data (~1–3 min)
+3. `POST /start-simulation` (publishes buckets to LocalStack SQS)
+4. `f1-consumer` writes metrics to DynamoDB → Grafana updates
+
+### Open Grafana
+
+| URL | Notes |
+|---|---|
+| http://localhost:3001 | admin / admin |
+| http://localhost:9090/targets | `metrics-exporter` should be **UP** |
+| http://localhost:9100/metrics | raw `f1_*` gauges |
+
+In the **RaceTrack — F1 Telemetry** dashboard, pick a **Simulation** from the dropdown (not “None”), set **Last 15 minutes**, refresh **5s**.
+
+### Troubleshooting simulation / Grafana
+
+| Problem | Fix |
+|---|---|
+| Grafana “No data”, Simulation = None | Run `make demo-simulation` (ingest alone is not enough) |
+| `f1-consumer` not running | `make setup-simulation` then `docker compose up -d f1-consumer` |
+| `env file .local/simulation.env not found` | Run `make setup-simulation` before starting `f1-consumer` |
+| Ingest timeout | `docker compose logs localstack --tail=50` — check IngestWorker + SaveSession |
+| Still empty after simulate | `curl -s localhost:9100/metrics \| grep ^f1_ \| head` — should show lines after ~30s |
+| Consumer errors | `docker compose logs f1-consumer --tail=30` |
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
@@ -425,7 +488,13 @@ make invoke-drivers PROFILE=um_aws
 make invoke-summary PROFILE=um_aws
 make invoke-laps PROFILE=um_aws
 
+# ── Local simulation + Grafana ───────────────────────────────────────────────
+make demo-simulation        # ingest + wait + start-simulation (needs start-api)
+make setup-simulation       # SQS queue + DynamoDB table only
+make invoke-start-simulation PROFILE=um_aws
+
 # ── Logs & infra ──────────────────────────────────────────────────────────────
+docker compose logs f1-consumer --tail=30
 docker compose logs localstack --tail=30   # check EventBridge → save_session
 make stop                                  # tear down containers
 ```
