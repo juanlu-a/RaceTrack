@@ -23,11 +23,12 @@ lambda_memory_size = 256
 lambda_runtime     = "python3.9"
 log_retention_days = 14
 
-# ECS containers (f1-consumer + metrics-exporter).
-# Keep enable_ecs = false until the first images are pushed to ECR, then set it
-# to true so the cluster/services are created with real images (no crash-loop).
-enable_ecs = false
+# ECS containers (f1-consumer + metrics-exporter). Images are in ECR (pushed by
+# the prior prod deploy), so services can be created with real images.
+enable_ecs = true
 
-# Prometheus + Grafana on Fargate. Requires enable_ecs = true and the
-# prometheus/grafana images in ECR. Keep false until then.
-enable_monitoring = false
+# Prometheus + Grafana on Fargate. Temporarily ON for a short demo window.
+# Grafana UI is public but password-protected (GF_SECURITY_ADMIN_PASSWORD via
+# the GRAFANA_ADMIN_PASSWORD CI secret); Prometheus/exporter are VPC-internal.
+# Flip both back to false when the demo window ends to stop billing.
+enable_monitoring = true

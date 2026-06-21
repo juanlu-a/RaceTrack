@@ -50,11 +50,11 @@ resource "aws_security_group" "ecs_exporter" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "Prometheus scrape"
+    description = "Prometheus scrape (VPC-internal only, not internet-facing)"
     from_port   = var.metrics_port
     to_port     = var.metrics_port
     protocol    = "tcp"
-    cidr_blocks = var.metrics_scrape_cidrs
+    cidr_blocks = [data.aws_vpc.default.cidr_block]
   }
 
   egress {
