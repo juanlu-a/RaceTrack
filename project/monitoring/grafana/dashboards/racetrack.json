@@ -12,7 +12,7 @@
       }
     ]
   },
-  "description": "Live F1 simulation telemetry — pick a simulation from the dropdown and watch the race unfold.",
+  "description": "Live F1 simulation telemetry — pick a simulation and watch the race unfold to completion.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -72,7 +72,7 @@
   "timezone": "browser",
   "title": "RaceTrack — F1 Telemetry",
   "uid": "racetrack-f1",
-  "version": 2,
+  "version": 3,
   "weekStart": "",
   "panels": [
     {
@@ -85,17 +85,61 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 1 },
+      "gridPos": { "h": 2, "w": 24, "x": 0, "y": 1 },
       "id": 101,
       "options": {
         "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false },
-        "content": "**RaceTrack live telemetry** — Select a **Simulation** above. Use **Drivers** to filter charts. Speed, gap and track map need `car_data` / `interval` / `location` in the ingested session; position and lap data always appear after a simulation starts.",
+        "content": "**RaceTrack live telemetry** — Select a **Simulation** above. Use **Drivers** to filter charts. Race sessions (not Practice) provide gap, leader speed and track map. The simulation **stops** at 100% progress and shows **Finished**.",
         "mode": "markdown"
       },
       "pluginVersion": "11.2.0",
       "title": "",
       "transparent": true,
       "type": "text"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "description": "Running while the simulation clock is advancing; Finished when race time reaches the end.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [
+            { "options": { "0": { "color": "green", "index": 0, "text": "Running" } }, "type": "value" },
+            { "options": { "1": { "color": "blue", "index": 1, "text": "Finished" } }, "type": "value" }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "blue", "value": 1 }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 0, "y": 3 },
+      "id": 13,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Status",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_simulation_complete{simulation_id=\"$simulation_id\"}",
+          "refId": "A"
+        }
+      ]
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
@@ -117,7 +161,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 5, "x": 0, "y": 4 },
+      "gridPos": { "h": 4, "w": 3, "x": 3, "y": 3 },
       "id": 1,
       "options": {
         "minVizHeight": 75,
@@ -141,7 +185,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-      "description": "Elapsed race time according to the simulation clock.",
+      "description": "Elapsed race time according to the simulation clock. Freezes when finished.",
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#5794F2", "mode": "fixed" },
@@ -151,7 +195,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 5, "x": 5, "y": 4 },
+      "gridPos": { "h": 4, "w": 3, "x": 6, "y": 3 },
       "id": 2,
       "options": {
         "colorMode": "value",
@@ -159,7 +203,7 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "pluginVersion": "11.2.0",
@@ -194,7 +238,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 5, "x": 10, "y": 4 },
+      "gridPos": { "h": 4, "w": 3, "x": 9, "y": 3 },
       "id": 8,
       "options": {
         "colorMode": "value",
@@ -202,7 +246,7 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "pluginVersion": "11.2.0",
@@ -211,14 +255,14 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-          "expr": "f1_driver_speed_kmh{simulation_id=\"$simulation_id\"} and on(driver_id) (f1_driver_position{simulation_id=\"$simulation_id\"} == 1)",
+          "expr": "f1_driver_speed_kmh{simulation_id=\"$simulation_id\"} and on(driver_id) (f1_driver_position{simulation_id=\"$simulation_id\"} == scalar(min(f1_driver_position{simulation_id=\"$simulation_id\"})))",
           "refId": "A"
         }
       ]
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-      "description": "Peak speed recorded in the current 10 s bucket across all drivers.",
+      "description": "Peak speed recorded in the current bucket across all drivers.",
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#FF9830", "mode": "fixed" },
@@ -230,7 +274,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 5, "x": 15, "y": 4 },
+      "gridPos": { "h": 4, "w": 3, "x": 12, "y": 3 },
       "id": 9,
       "options": {
         "colorMode": "value",
@@ -238,7 +282,7 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "pluginVersion": "11.2.0",
@@ -248,6 +292,76 @@
         {
           "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
           "expr": "max(f1_driver_max_speed_kmh{simulation_id=\"$simulation_id\", driver_id=~\"$driver\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "description": "Driver number currently in P1.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#FADE2A", "mode": "fixed" },
+          "decimals": 0,
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "yellow", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 15, "y": 3 },
+      "id": 14,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^driver_id$/", "values": false },
+        "textMode": "name",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Leader",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_position{simulation_id=\"$simulation_id\"} == scalar(min(f1_driver_position{simulation_id=\"$simulation_id\"}))",
+          "instant": true,
+          "legendFormat": "#{{driver_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+      "description": "Highest lap number reached by any driver.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "fixedColor": "#73BF69", "mode": "fixed" },
+          "decimals": 0,
+          "unit": "none",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 4, "w": 3, "x": 18, "y": 3 },
+      "id": 15,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.2.0",
+      "title": "Lap leader",
+      "type": "stat",
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "max(f1_driver_lap_number{simulation_id=\"$simulation_id\", driver_id=~\"$driver\"})",
           "refId": "A"
         }
       ]
@@ -264,7 +378,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 4 },
+      "gridPos": { "h": 4, "w": 3, "x": 21, "y": 3 },
       "id": 10,
       "options": {
         "colorMode": "value",
@@ -272,7 +386,7 @@
         "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "wideLayout": true
       },
       "pluginVersion": "11.2.0",
@@ -288,7 +402,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 7 },
       "id": 102,
       "panels": [],
       "title": "Live standings",
@@ -296,7 +410,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-      "description": "Snapshot of the current race order with speed, gap and lap.",
+      "description": "Snapshot of the current race order with speed, gap, lap and last lap time.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -313,7 +427,8 @@
             "properties": [
               { "id": "custom.cellOptions", "value": { "mode": "gradient", "type": "color-background" } },
               { "id": "color", "value": { "mode": "continuous-GrYlRd", "seriesBy": "last" } },
-              { "id": "custom.width", "value": 70 }
+              { "id": "custom.width", "value": 60 },
+              { "id": "decimals", "value": 0 }
             ]
           },
           {
@@ -323,7 +438,8 @@
               { "id": "decimals", "value": 0 },
               { "id": "custom.cellOptions", "value": { "mode": "lcd", "type": "gauge" } },
               { "id": "max", "value": 350 },
-              { "id": "min", "value": 0 }
+              { "id": "min", "value": 0 },
+              { "id": "custom.width", "value": 120 }
             ]
           },
           {
@@ -331,27 +447,53 @@
             "properties": [
               { "id": "unit", "value": "s" },
               { "id": "decimals", "value": 1 },
-              { "id": "custom.width", "value": 90 }
+              { "id": "custom.width", "value": 90 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "options": { "0": { "color": "green", "index": 0, "text": "LEADER" } }, "type": "value" }
+                ]
+              }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Lap" },
             "properties": [
               { "id": "decimals", "value": 0 },
-              { "id": "custom.width", "value": 70 }
+              { "id": "custom.width", "value": 60 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Last lap" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.width", "value": 90 }
             ]
           },
           {
             "matcher": { "id": "byName", "options": "Driver" },
             "properties": [
-              { "id": "custom.width", "value": 90 },
+              { "id": "custom.width", "value": 80 },
               { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }
+              { "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "pattern": "(.+)",
+                      "result": { "index": 0, "text": "#$1" }
+                    },
+                    "type": "regex"
+                  }
+                ]
+              }
             ]
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 10 },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 8 },
       "id": 3,
       "options": {
         "cellHeight": "sm",
@@ -390,6 +532,13 @@
           "format": "table",
           "instant": true,
           "refId": "D"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
+          "expr": "f1_driver_last_lap_seconds{simulation_id=\"$simulation_id\", driver_id=~\"$driver\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "E"
         }
       ],
       "transformations": [
@@ -410,31 +559,37 @@
               "__name__ 1": true,
               "__name__ 2": true,
               "__name__ 3": true,
+              "__name__ 4": true,
               "job": true,
               "job 1": true,
               "job 2": true,
               "job 3": true,
+              "job 4": true,
               "instance": true,
               "instance 1": true,
               "instance 2": true,
               "instance 3": true,
+              "instance 4": true,
               "simulation_id": true,
               "simulation_id 1": true,
               "simulation_id 2": true,
-              "simulation_id 3": true
+              "simulation_id 3": true,
+              "simulation_id 4": true
             },
             "indexByName": {
               "driver_id": 0,
               "Value #A": 1,
               "Value #B": 2,
               "Value #C": 3,
-              "Value #D": 4
+              "Value #D": 4,
+              "Value #E": 5
             },
             "renameByName": {
               "Value #A": "Pos",
               "Value #B": "Speed",
               "Value #C": "Gap",
               "Value #D": "Lap",
+              "Value #E": "Last lap",
               "driver_id": "Driver"
             }
           }
@@ -443,7 +598,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
       "id": 103,
       "panels": [],
       "title": "Speed",
@@ -459,27 +614,28 @@
             "axisBorderShow": false,
             "axisCenteredZero": false,
             "drawStyle": "line",
-            "fillOpacity": 15,
+            "fillOpacity": 10,
             "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "pointSize": 4,
             "showPoints": "auto",
-            "spanNulls": true,
+            "spanNulls": 600000,
             "stacking": { "group": "A", "mode": "none" },
             "thresholdsStyle": { "mode": "off" }
           },
+          "decimals": 0,
           "max": 350,
           "min": 0,
           "unit": "velocitykmh"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 19 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 18 },
       "id": 4,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull", "max"],
+          "calcs": ["lastNotNull", "max", "mean"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -500,10 +656,11 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
-      "description": "Instant snapshot of each driver's current speed.",
+      "description": "Instant snapshot of each driver's current speed, sorted fastest first.",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "continuous-BlYlRd" },
+          "decimals": 0,
           "max": 350,
           "min": 0,
           "unit": "velocitykmh",
@@ -511,7 +668,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 19 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 18 },
       "id": 11,
       "options": {
         "displayMode": "gradient",
@@ -541,7 +698,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 26 },
       "id": 104,
       "panels": [],
       "title": "Gaps & laps",
@@ -556,24 +713,25 @@
           "custom": {
             "axisBorderShow": false,
             "drawStyle": "line",
-            "fillOpacity": 25,
+            "fillOpacity": 10,
             "gradientMode": "opacity",
             "lineInterpolation": "smooth",
             "lineWidth": 2,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 600000,
             "stacking": { "group": "A", "mode": "none" }
           },
+          "decimals": 1,
           "min": 0,
           "unit": "s"
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
       "id": 5,
       "options": {
         "legend": {
-          "calcs": ["lastNotNull"],
+          "calcs": ["lastNotNull", "max"],
           "displayMode": "table",
           "placement": "bottom",
           "showLegend": true
@@ -605,7 +763,7 @@
             "lineInterpolation": "stepAfter",
             "lineWidth": 2,
             "showPoints": "never",
-            "spanNulls": true,
+            "spanNulls": 600000,
             "stacking": { "group": "A", "mode": "none" }
           },
           "decimals": 0,
@@ -614,7 +772,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
       "id": 12,
       "options": {
         "legend": {
@@ -639,7 +797,7 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 36 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
       "id": 105,
       "panels": [],
       "title": "Position & track",
@@ -657,8 +815,8 @@
             "fillOpacity": 0,
             "lineInterpolation": "stepAfter",
             "lineWidth": 2,
-            "showPoints": "never",
-            "spanNulls": true,
+            "showPoints": "auto",
+            "spanNulls": 600000,
             "stacking": { "group": "A", "mode": "none" },
             "axisSoftMin": 1,
             "axisSoftMax": 20,
@@ -673,7 +831,7 @@
         },
         "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 37 },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 36 },
       "id": 6,
       "options": {
         "legend": {
@@ -707,37 +865,27 @@
             "axisCenteredZero": false,
             "drawStyle": "points",
             "lineWidth": 0,
-            "pointSize": 8,
+            "pointSize": 12,
             "showPoints": "always",
             "scaleDistribution": { "type": "linear" }
           },
           "unit": "none"
         },
-        "overrides": [
-          {
-            "matcher": { "id": "byRegexp", "options": "/.*x.*/" },
-            "properties": [{ "id": "displayName", "value": "track X" }]
-          },
-          {
-            "matcher": { "id": "byRegexp", "options": "/.*y.*/" },
-            "properties": [{ "id": "displayName", "value": "track Y" }]
-          }
-        ]
+        "overrides": []
       },
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 37 },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 36 },
       "id": 7,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
-        "mapping": "manual",
+        "legend": { "displayMode": "list", "placement": "right", "showLegend": true },
+        "seriesMapping": "manual",
         "series": [
           {
             "name": "Drivers",
-            "x": { "field": "track_x" },
-            "y": { "field": "track_y" }
+            "x": "track_x",
+            "y": "track_y"
           }
         ],
-        "tooltip": { "mode": "single", "sort": "none" },
-        "xField": "track_x"
+        "tooltip": { "mode": "single", "sort": "none" }
       },
       "pluginVersion": "11.2.0",
       "title": "Track map (current)",

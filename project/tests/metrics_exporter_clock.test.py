@@ -51,3 +51,11 @@ def test_progress_ratio_clamps(exporter_clock_mod):
     assert exporter_clock_mod.progress_ratio(9000, 6000) == 1.0
     assert exporter_clock_mod.progress_ratio(-5, 6000) == 0.0
     assert exporter_clock_mod.progress_ratio(100, 0) == 0.0
+
+
+def test_is_complete(exporter_clock_mod):
+    assert exporter_clock_mod.is_complete(5999, 6000) is False
+    assert exporter_clock_mod.is_complete(6000, 6000) is True
+    assert exporter_clock_mod.is_complete(7000, 6000) is True
+    assert exporter_clock_mod.is_complete(100, 0) is False
+    assert exporter_clock_mod.is_complete(100, None) is False
