@@ -48,8 +48,12 @@ BUCKET_SECONDS = 10
 DELAY_STEP_SECONDS = int(os.environ.get("DELAY_STEP_SECONDS", "1"))
 # AWS hard cap for SQS DelaySeconds (15 minutes).
 MAX_DELAY_SECONDS = 900
-# SQS allows at most 10 entries per send_message_batch call.
+# SQS allows at most 10 entries per send_message_batch call, and the total
+# payload of a batch (all MessageBodies combined) must stay under 256 KiB.
 SQS_BATCH_SIZE = 10
+SQS_MAX_BYTES = 262_144
+# Leave headroom for Id / DelaySeconds JSON overhead in the batch request.
+SQS_BATCH_BYTES_BUDGET = 250_000
 
 
 def _json_response(status_code: int, body: dict) -> dict:
@@ -91,6 +95,45 @@ def _parse_body(event) -> dict:
     if isinstance(raw, dict):
         return raw
     raise ValueError("Unsupported body type")
+
+
+def _message_bytes(entry: dict) -> int:
+    return len(entry["MessageBody"].encode("utf-8"))
+
+
+def _chunk_sqs_entries(entries: list) -> list:
+    """Split entries into SQS-safe batches (≤10 msgs, ≤256 KiB total per batch)."""
+    chunks = []
+    current = []
+    current_bytes = 0
+    for entry in entries:
+        nbytes = _message_bytes(entry)
+        if nbytes > SQS_MAX_BYTES:
+            raise ValueError(
+                f"Bucket message too large for SQS ({nbytes} bytes > {SQS_MAX_BYTES}). "
+                "Try a session with less telemetry or reduce TELEMETRY_SAMPLE_HZ on ingest."
+            )
+        if current and (
+            len(current) >= SQS_BATCH_SIZE
+            or current_bytes + nbytes > SQS_BATCH_BYTES_BUDGET
+        ):
+            chunks.append(current)
+            current = []
+            current_bytes = 0
+        current.append(entry)
+        current_bytes += nbytes
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _publish_entries(sqs, entries: list) -> list:
+    """Send all entries; return any SQS-reported failures."""
+    failed = []
+    for chunk in _chunk_sqs_entries(entries):
+        resp = sqs.send_message_batch(QueueUrl=SQS_QUEUE_URL, Entries=chunk)
+        failed.extend(resp.get("Failed", []))
+    return failed
 
 
 def _build_buckets(rows):
@@ -207,11 +250,9 @@ def handler(event, context):
 
     try:
         sqs = _sqs_client()
-        failed = []
-        for i in range(0, len(entries), SQS_BATCH_SIZE):
-            chunk = entries[i:i + SQS_BATCH_SIZE]
-            resp = sqs.send_message_batch(QueueUrl=SQS_QUEUE_URL, Entries=chunk)
-            failed.extend(resp.get("Failed", []))
+        failed = _publish_entries(sqs, entries)
+    except ValueError as e:
+        return _json_response(413, {"error": str(e)})
     except Exception as e:
         return _json_response(500, {"error": "Failed to publish to SQS", "details": str(e)})
 
