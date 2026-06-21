@@ -55,7 +55,7 @@ resource "aws_security_group" "monitoring" {
   }
 
   ingress {
-    description = "Internal Service Connect traffic between monitoring tasks (Grafana -> Prometheus)"
+    description = "Internal Service Connect traffic between monitoring tasks (Grafana to Prometheus)"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
