@@ -45,7 +45,29 @@
       "datasource": { "type": "prometheus", "uid": "racetrack-prometheus" },
       "targets": [ { "refId": "A", "expr": "f1_simulation_info{simulation_id=\"$simulation_id\"}", "legendFormat": "{{session_id}}", "instant": true } ],
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "name", "colorMode": "background", "graphMode": "none" },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "mappings": [ { "type": "value", "options": { "9094": {"text": "Mónaco"}, "9165": {"text": "Singapur"}, "9157": {"text": "Monza"}, "9158": {"text": "Monza (9158)"}, "9126": {"text": "Silverstone"}, "9141": {"text": "Spa"}, "9173": {"text": "Suzuka"}, "9205": {"text": "Brasil"}, "9189": {"text": "Las Vegas"}, "9118": {"text": "Austria"} } } ] } }
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "mappings": [ { "type": "value", "options": {
+        "7953": {"text": "Bahréin · Sakhir"},
+        "9070": {"text": "Azerbaiyán · Bakú"},
+        "9078": {"text": "Miami · EE.UU."},
+        "9094": {"text": "Mónaco · Montecarlo"},
+        "9102": {"text": "España · Catalunya"},
+        "9110": {"text": "Canadá · Montreal"},
+        "9118": {"text": "Austria · Spielberg"},
+        "9126": {"text": "Gran Bretaña · Silverstone"},
+        "9133": {"text": "Hungría · Hungaroring"},
+        "9141": {"text": "Bélgica · Spa"},
+        "9149": {"text": "Países Bajos · Zandvoort"},
+        "9157": {"text": "Italia · Monza"},
+        "9158": {"text": "Italia · Monza (9158)"},
+        "9165": {"text": "Singapur · Marina Bay"},
+        "9173": {"text": "Japón · Suzuka"},
+        "9181": {"text": "México · Ciudad de México"},
+        "9189": {"text": "Las Vegas · EE.UU."},
+        "9197": {"text": "Abu Dhabi · Yas Marina"},
+        "9205": {"text": "Brasil · Interlagos"},
+        "9213": {"text": "EE.UU. · Austin"},
+        "9221": {"text": "Qatar · Lusail"}
+      } } ] } }
     },
     {
       "type": "stat", "title": "Estado", "id": 2,
