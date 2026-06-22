@@ -50,7 +50,7 @@ resource "aws_vpc_endpoint" "dynamodb" {
 
 # ── Security group para los Interface endpoints (HTTPS desde la VPC) ─────────
 resource "aws_security_group" "vpce" {
-  count       = var.enable_ecs ? 1 : 0
+  count       = var.enable_ecs && var.create_interface_endpoints ? 1 : 0
   name        = "${local.prefix}-vpce-sg"
   description = "HTTPS to interface VPC endpoints from inside the VPC"
   vpc_id      = data.aws_vpc.default.id
@@ -76,8 +76,11 @@ resource "aws_security_group" "vpce" {
 # ── Interface endpoints (PrivateLink) ────────────────────────────────────────
 # ECR (api + dkr) para bajar imágenes, Logs para awslogs, SQS para el consumer.
 # private_dns_enabled hace que los nombres DNS de AWS resuelvan a estos endpoints.
+# OJO: el private DNS es a nivel de VPC. Como staging y prod comparten la VPC
+# default, estos endpoints se crean UNA sola vez (create_interface_endpoints=true
+# en staging) y el otro entorno los reusa vía el private DNS de la VPC.
 locals {
-  interface_endpoints = var.enable_ecs ? toset([
+  interface_endpoints = var.enable_ecs && var.create_interface_endpoints ? toset([
     "ecr.api",
     "ecr.dkr",
     "logs",
