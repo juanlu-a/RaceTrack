@@ -53,6 +53,12 @@ variable "private_subnet_azs" {
   default     = ["us-east-1a", "us-east-1b"]
 }
 
+variable "create_interface_endpoints" {
+  type        = bool
+  description = "Create the interface VPC endpoints (ECR/Logs/SQS). Their private DNS is VPC-wide; since staging and prod share the default VPC, only ONE env should create them (staging=true) and the other reuses them (prod=false)."
+  default     = true
+}
+
 variable "db_instance_class" {
   type    = string
   default = "db.t3.micro"

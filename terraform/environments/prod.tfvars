@@ -36,3 +36,8 @@ enable_monitoring = true
 # Private subnets for ECS tasks. staging and prod SHARE the default VPC, so prod
 # uses DIFFERENT CIDRs than staging (.240/.241) to avoid subnet conflicts.
 private_subnet_cidrs = ["172.31.242.0/24", "172.31.243.0/24"]
+
+# Interface endpoints (ECR/Logs/SQS) have VPC-wide private DNS, and the VPC is
+# shared with staging — so staging creates them and prod reuses them. Prod still
+# creates its own gateway endpoints (S3/DynamoDB) on its private route table.
+create_interface_endpoints = false
