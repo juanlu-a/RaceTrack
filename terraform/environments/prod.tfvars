@@ -32,3 +32,7 @@ enable_ecs = true
 # the GRAFANA_ADMIN_PASSWORD CI secret); Prometheus/exporter are VPC-internal.
 # Flip both back to false when the demo window ends to stop billing.
 enable_monitoring = true
+
+# Private subnets for ECS tasks. staging and prod SHARE the default VPC, so prod
+# uses DIFFERENT CIDRs than staging (.240/.241) to avoid subnet conflicts.
+private_subnet_cidrs = ["172.31.242.0/24", "172.31.243.0/24"]
