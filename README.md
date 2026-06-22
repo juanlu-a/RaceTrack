@@ -5,7 +5,7 @@ Pipeline de telemetría de Fórmula 1 en AWS: ingesta una sesión real de la API
 métricas por piloto y las muestra en vivo en **Grafana**. Desplegado en dos entornos (`staging` y
 `prod`) con Terraform + GitHub Actions.
 
-## 🔑 Grafana (URL estable vía ALB)
+## Grafana (URL estable vía ALB)
 
 | Ambiente | URL | Usuario | Contraseña |
 | --- | --- | --- | --- |
@@ -14,14 +14,33 @@ métricas por piloto y las muestra en vivo en **Grafana**. Desplegado en dos ent
 
 Dashboard: **RaceTrack — F1 Telemetry**.
 
-## 🌐 API de la app
+## API de la app
 
 | Ambiente | Base URL |
 | --- | --- |
 | **Staging** | `https://15foua88jk.execute-api.us-east-1.amazonaws.com` |
 | **Producción** | `https://gzp7twnqsg.execute-api.us-east-1.amazonaws.com` |
 
-## ▶️ Lanzar una nueva simulación
+## Sesiones disponibles (OpenF1 2023)
+
+`session_key` para usar en `/ingest` y `/start-simulation`. **Mónaco (9094)** y **Singapur (9165)**
+ya están pre-cargadas en staging y prod; el resto hay que ingestarlo primero
+(`GET /ingest?session_key=<key>`, esperar ~1 min) y luego lanzar la simulación.
+
+| Key | GP | Key | GP |
+| --- | --- | --- | --- |
+| 7953 | Bahréin | 9149 | Países Bajos (Zandvoort) |
+| 9070 | Azerbaiyán (Bakú) | 9157 | Italia (Monza) |
+| 9078 | Miami | 9165 | Singapur |
+| 9094 | Mónaco | 9173 | Japón (Suzuka) |
+| 9102 | España | 9181 | México |
+| 9110 | Canadá | 9189 | Las Vegas |
+| 9118 | Austria | 9197 | Abu Dhabi |
+| 9126 | Gran Bretaña (Silverstone) | 9205 | Brasil (Interlagos) |
+| 9133 | Hungría | 9213 | Estados Unidos (Austin) |
+| 9141 | Bélgica (Spa) | 9221 | Qatar |
+
+## Lanzar una nueva simulación
 
 > Se lanza **desde la API** (no desde Grafana). Grafana solo la **muestra**.
 
@@ -49,7 +68,7 @@ curl -X POST "https://gzp7twnqsg.execute-api.us-east-1.amazonaws.com/start-simul
 > `simulation_duration_seconds` = cuánto dura la reproducción (300 = 5 min).
 > Si elegís una simulación vieja en el dropdown → "No data": elegí siempre la más reciente.
 
-## 🏗️ Qué demuestra el sistema
+## Qué demuestra el sistema
 
 - **Pipeline event-driven:** API Gateway → Lambdas → EventBridge → S3 → RDS.
 - **Mensajería + procesamiento:** RDS → SQS → f1-consumer → DynamoDB (en **subredes privadas**).
@@ -57,7 +76,7 @@ curl -X POST "https://gzp7twnqsg.execute-api.us-east-1.amazonaws.com/start-simul
 
 Detalle de arquitectura: ver [`docs/ARQUITECTURA.md`](./docs/ARQUITECTURA.md).
 
-## ⚠️ Notas
+## Notas
 
 - **Costo:** plan de créditos gratis (~$130) — no puede generar factura sorpresa (si se agotan, AWS
   pausa el acceso, no cobra tarjeta).

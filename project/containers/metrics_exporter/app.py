@@ -52,6 +52,9 @@ _DRIVER_GAUGES = {
 _RACE_TIME_GAUGE = Gauge("f1_simulation_race_time_seconds", "Simulation race time (s)", ["simulation_id"])
 _PROGRESS_GAUGE = Gauge("f1_simulation_progress_ratio", "Race progress [0,1]", ["simulation_id"])
 _COMPLETE_GAUGE = Gauge("f1_simulation_complete", "1 when simulation race time has finished", ["simulation_id"])
+# Identifies which session a simulation belongs to, so dashboards can show a
+# readable label (session key) instead of just the opaque simulation UUID.
+_SIM_INFO_GAUGE = Gauge("f1_simulation_info", "Simulation metadata (value always 1)", ["simulation_id", "session_id"])
 
 
 def _table():
@@ -71,12 +74,15 @@ def _num(value):
 
 
 def _clear_gauges():
-    """Drop stale label combinations so only the active simulation snapshot is exported."""
+    """Drop stale label combinations. Called only when the active simulation changes,
+    NOT every cycle — otherwise a finished race (which keeps re-publishing its last
+    snapshot) would flicker to empty between scrapes."""
     for gauge in _DRIVER_GAUGES.values():
         gauge.clear()
     _RACE_TIME_GAUGE.clear()
     _PROGRESS_GAUGE.clear()
     _COMPLETE_GAUGE.clear()
+    _SIM_INFO_GAUGE.clear()
 
 
 def _find_newest_meta(table):
@@ -113,11 +119,11 @@ def _load_simulation(table, simulation_id):
     return meta, buckets
 
 
-def _publish(simulation_id, bucket, race_time, ratio, complete):
-    _clear_gauges()
+def _publish(simulation_id, session_id, bucket, race_time, ratio, complete):
     _RACE_TIME_GAUGE.labels(simulation_id=simulation_id).set(race_time)
     _PROGRESS_GAUGE.labels(simulation_id=simulation_id).set(ratio)
     _COMPLETE_GAUGE.labels(simulation_id=simulation_id).set(1 if complete else 0)
+    _SIM_INFO_GAUGE.labels(simulation_id=simulation_id, session_id=str(session_id or "")).set(1)
     if bucket is None:
         return
     drivers = bucket.get("drivers") or {}
@@ -138,6 +144,8 @@ def main():
 
     # Per-simulation wall-clock anchor, fixed the first time a sim is seen.
     sim_starts = {}
+    # Track the active simulation so we only clear gauges when it actually changes.
+    active_sim = None
 
     while True:
         try:
@@ -150,6 +158,13 @@ def main():
             if simulation_id:
                 meta, buckets = _load_simulation(table, simulation_id)
                 if meta:
+                    # Only wipe old series when switching simulations. A finished race
+                    # keeps re-publishing its final snapshot, so it never goes blank.
+                    if simulation_id != active_sim:
+                        _clear_gauges()
+                        active_sim = simulation_id
+                        log.info("active simulation -> %s", simulation_id)
+
                     now = datetime.now(timezone.utc)
                     if simulation_id not in sim_starts:
                         sim_starts[simulation_id] = now
@@ -167,9 +182,15 @@ def main():
 
                     ordered = sorted(buckets, key=lambda b: _num(b.get("race_time_start_seconds")) or 0.0)
                     bucket = select_bucket(ordered, race_time)
-                    if complete and ordered:
+                    # Always fall back to the latest bucket with data (e.g. when the race
+                    # is finished) so the dashboard shows the final standings, not blanks.
+                    if bucket is None and ordered:
                         bucket = ordered[-1]
-                    _publish(simulation_id, bucket, race_time, ratio, complete)
+                    elif complete and ordered:
+                        bucket = ordered[-1]
+
+                    session_id = meta.get("session_id")
+                    _publish(simulation_id, session_id, bucket, race_time, ratio, complete)
                     if complete:
                         log.info("simulation %s complete at race_time=%.1fs", simulation_id, race_time)
         except Exception:
