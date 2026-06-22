@@ -25,13 +25,22 @@ make start          # or: docker compose up -d
 | Prometheus       | http://localhost:9090        | check Status → Targets                 |
 | metrics-exporter | http://localhost:9100/metrics | raw gauges                             |
 
-Grafana auto-loads the Prometheus datasource and the RaceTrack dashboard. Pick a
-simulation from the **Simulation** dropdown.
+Grafana auto-loads the Prometheus datasource and the **RaceTrack — F1 Telemetry**
+dashboard. Pick a simulation from the **Simulation** dropdown; optionally filter
+charts with the **Drivers** variable.
 
-> To see live data locally you must run the full pipeline so `f1-consumer`
-> populates the `racetrack-local-simulation-metrics` DynamoDB table in LocalStack.
-> With no data the exporter still serves `/metrics` (empty) and the Prometheus
-> target stays UP.
+### Dashboard panels
+
+| Section | Panels |
+| --- | --- |
+| Race overview | Progress gauge, race time, leader speed, max speed, driver count |
+| Live standings | Table with position, speed, gap and lap (with inline gauges) |
+| Speed | Time series + horizontal bar gauge snapshot |
+| Gaps & laps | Gap to leader, lap number progression |
+| Position & track | Position over time (P1 at top), track map scatter |
+
+> **Local with data:** from `project/` run `make all`, then `make start-api` (terminal 2)
+> and `make demo-simulation` (terminal 3). See `HOWTO.md` § “Local simulation + Grafana”.
 
 Grafana is mapped to host port **3001** so it doesn't collide with
 `sam local start-api` (port 3000).

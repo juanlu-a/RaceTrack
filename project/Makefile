@@ -1,14 +1,26 @@
-.PHONY: build start stop setup all start-api invoke-ingest invoke-worker invoke-save invoke-sessions invoke-drivers invoke-summary invoke-laps
+.PHONY: build start stop setup setup-simulation all start-api \
+	invoke-ingest invoke-worker invoke-save invoke-sessions invoke-drivers \
+	invoke-summary invoke-laps invoke-start-simulation demo-simulation
 
 # AWS profile — leave empty to use the default profile (works for most teammates).
 # Juanlu: run make with PROFILE=um_aws  e.g.  make all PROFILE=um_aws
 PROFILE ?=
 PROFILE_FLAG = $(if $(PROFILE),--profile $(PROFILE),)
 
+API_BASE ?= http://localhost:3000
+SESSION_KEY ?= 9158
+SIM_DURATION ?= 120
+
 # ── Infrastructure ───────────────────────────────────────────────────────────
 
-start:
-	docker compose up -d
+# Core infra without f1-consumer (consumer needs .local/simulation.env first).
+start-core:
+	docker compose up -d localstack postgres metrics-exporter prometheus grafana
+	@echo "Waiting for services..."
+	@sleep 8
+
+start: start-core setup-simulation
+	docker compose up -d f1-consumer
 
 stop:
 	docker compose down
@@ -18,29 +30,45 @@ stop:
 build:
 	sam build $(PROFILE_FLAG)
 
-# ── LocalStack wiring (run after build + start) ──────────────────────────────
+# ── LocalStack wiring (run after build + start-core) ─────────────────────────
 
 setup:
 	@chmod +x scripts/setup_localstack.sh
 	@AWS_PROFILE=$(PROFILE) ./scripts/setup_localstack.sh
 
-# ── Full local bootstrap (build → start → setup) ─────────────────────────────
+setup-simulation:
+	@chmod +x scripts/setup_simulation_local.sh scripts/wait_for_ingest.sh
+	@./scripts/setup_simulation_local.sh
 
-all: build start
-	@echo "Waiting for services to be ready..."
-	@sleep 8
-	@$(MAKE) setup PROFILE=$(PROFILE)
+# ── Full local bootstrap (build → infra → LocalStack + simulation) ───────────
+
+all: build start-core setup setup-simulation
+	docker compose up -d f1-consumer
 
 # ── Local API server (Postman / curl) ────────────────────────────────────────
-# Starts HTTP server on http://localhost:3000 with all routes from template.yaml
-# Teammates:  make start-api
-# Juanlu:     make start-api PROFILE=um_aws
 
 start-api:
 	sam local start-api \
 		--env-vars env.json \
 		--port 3000 \
 		$(PROFILE_FLAG)
+
+# ── End-to-end local demo: ingest → wait → simulate → Grafana ────────────────
+# Requires: make all  AND  make start-api (in another terminal)
+
+demo-simulation:
+	@echo "▶ Ingest session $(SESSION_KEY)..."
+	@curl -sS "$(API_BASE)/ingest?session_key=$(SESSION_KEY)"; echo
+	@API_BASE="$(API_BASE)" ./scripts/wait_for_ingest.sh "$(SESSION_KEY)"
+	@echo "▶ Start simulation (duration=$(SIM_DURATION)s metadata)..."
+	@curl -sS -X POST "$(API_BASE)/start-simulation" \
+		-H "Content-Type: application/json" \
+		-d '{"session_id":"$(SESSION_KEY)","simulation_duration_seconds":$(SIM_DURATION)}'; echo
+	@echo ""
+	@echo "Done. In ~30s open Grafana: http://localhost:3001"
+	@echo "  Dashboard: RaceTrack — F1 Telemetry"
+	@echo "  Pick a Simulation from the dropdown (refresh 5s)"
+	@echo "  Metrics raw: http://localhost:9100/metrics"
 
 # ── Individual lambda invocations ─────────────────────────────────────────────
 
@@ -83,5 +111,11 @@ invoke-summary:
 invoke-laps:
 	sam local invoke DriverLapsFunction \
 		--event lambdas/driver_laps/events/event.json \
+		--env-vars env.json \
+		$(PROFILE_FLAG)
+
+invoke-start-simulation:
+	sam local invoke StartSimulationFunction \
+		--event lambdas/start_simulation/events/event.json \
 		--env-vars env.json \
 		$(PROFILE_FLAG)
