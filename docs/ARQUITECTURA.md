@@ -75,7 +75,7 @@ flowchart TB
         LAMBDAS[8 Lambdas<br/>ingesta + lectura + simulacion]
     end
 
-    subgraph datos["Almacenamiento / mensajeria"]
+    subgraph aws["Servicios AWS regionales"]
         S3[(S3<br/>datos crudos)]
         DDB[(DynamoDB<br/>metricas)]
         SQS[[SQS + DLQ]]
@@ -83,10 +83,14 @@ flowchart TB
         CW[(CloudWatch<br/>logs)]
     end
 
-    subgraph vpc["VPC"]
-        ALB[ALB publico<br/>subredes publicas]
-        VPCE{{VPC Endpoints<br/>S3 DynamoDB ECR Logs SQS}}
+    subgraph vpc["VPC default 172.31.0.0/16 (sin NAT)"]
+        subgraph pub["Subredes PUBLICAS"]
+            ALB[ALB publico :80]
+            RDS[(RDS PostgreSQL :5432)]
+        end
         subgraph priv["Subredes PRIVADAS (sin IP publica)"]
+            GW{{Gateway endpoints<br/>S3 + DynamoDB}}
+            IF{{Interface endpoints<br/>ECR + Logs + SQS}}
             subgraph ecs["Cluster ECS Fargate"]
                 CONS[f1-consumer]
                 EXP[metrics-exporter :9100]
@@ -94,7 +98,6 @@ flowchart TB
                 GRAF[Grafana :3000]
             end
         end
-        RDS[(RDS PostgreSQL :5432)]
     end
 
     internet --> API
@@ -111,13 +114,53 @@ flowchart TB
     EXP --> DDB
     PROM -->|scrape| EXP
     GRAF -->|consulta| PROM
-    ecs -.por red interna.-> VPCE
-    VPCE -.-> ECR
-    VPCE -.-> CW
-    VPCE -.-> S3
-    VPCE -.-> DDB
-    VPCE -.-> SQS
+
+    %% egress de las tareas a AWS por la red interna (sin internet)
+    ecs -.red interna.-> GW
+    ecs -.red interna.-> IF
+    GW -.-> S3
+    GW -.-> DDB
+    IF -.-> ECR
+    IF -.-> CW
+    IF -.-> SQS
 ```
+
+### Zoom a la red (VPC, subredes y endpoints)
+
+```mermaid
+flowchart TB
+    subgraph vpc["VPC default - 172.31.0.0/16 - sin Internet Gateway para lo privado"]
+        direction TB
+
+        subgraph pub["Subredes PUBLICAS (default-for-az, 1 por AZ)"]
+            ALB[ALB internet-facing]
+            RDS[(RDS PostgreSQL)]
+        end
+
+        subgraph priv["Subredes PRIVADAS (route table SIN ruta a internet)"]
+            direction TB
+            subgraph a["AZ us-east-1a"]
+                SA["subnet privada<br/>staging 172.31.240.0/24<br/>prod 172.31.242.0/24"]
+            end
+            subgraph b["AZ us-east-1b"]
+                SB["subnet privada<br/>staging 172.31.241.0/24<br/>prod 172.31.243.0/24"]
+            end
+            TASKS[Tareas ECS Fargate<br/>consumer · exporter · prometheus · grafana]
+            IFE{{"Interface endpoints<br/>ECR (api + dkr) · Logs · SQS<br/>private DNS a nivel VPC"}}
+        end
+
+        GWE{{Gateway endpoints<br/>S3 · DynamoDB<br/>en la route table privada}}
+    end
+
+    ALB -->|forward :3000| TASKS
+    SA --- TASKS
+    SB --- TASKS
+    TASKS -.HTTPS interno.-> IFE
+    TASKS -.ruta de la subnet.-> GWE
+```
+
+> Nota: staging y prod **comparten** la VPC default, por eso usan CIDRs distintos y los **interface
+> endpoints se crean una vez (staging) y prod los reusa** (su private DNS es a nivel de toda la VPC).
 
 ### Lo importante de la red y la seguridad
 
@@ -139,6 +182,13 @@ flowchart TB
 
 > 💰 **No puede explotar el costo:** la cuenta usa el plan de créditos gratis. Si algo se abusa, se
 > gastan los créditos y AWS _pausa_ el acceso — nunca te llega una factura sorpresa a la tarjeta.
+
+> ⚠️ **VPC compartida (deuda técnica conocida):** `staging` y `prod` viven en la **misma VPC default**.
+> Por eso: (a) cada entorno usa **CIDRs de subred distintos** (staging `172.31.240/241`, prod
+> `172.31.242/243`); y (b) los **interface endpoints** (ECR/Logs/SQS) tienen DNS privado a nivel de
+> VPC, así que se crean **una sola vez en staging** y **prod los reusa**. Consecuencia: prod depende
+> de staging para ese DNS (al apagar, apagar prod antes que staging). **Mejora correcta a futuro:**
+> una **VPC dedicada por entorno**, así cada uno tiene sus propias subredes y endpoints sin compartir.
 
 ---
 
@@ -191,3 +241,47 @@ Para ver las IPs actuales de Grafana/Prometheus (cambian al reiniciar la tarea):
 cd project && ./scripts/monitoring_ips.sh            # staging
 cd project && ENV=prod ./scripts/monitoring_ips.sh   # prod
 ```
+
+---
+
+## 6. Detalle de componentes (qué hace cada uno y con quién habla)
+
+### Lambdas (8) — qué hace y con quién habla
+
+| Lambda | Disparador | Hace | Conecta con |
+| --- | --- | --- | --- |
+| **ingest_session** | `GET /ingest` | Recibe el pedido, responde 202 y emite evento | → EventBridge (`IngestRequested`) |
+| **ingest_worker** | EventBridge `IngestRequested` | Baja la sesión de OpenF1, decima telemetría a ~1 Hz, guarda crudo; emite evento | OpenF1 → **S3** → EventBridge (`SessionIngested`) |
+| **save_session** | EventBridge `SessionIngested` | Lee el crudo, aplana 8 datasets y los inserta | **S3** → **RDS** |
+| **list_session** | `GET /sessions` | Lista sesiones | **RDS** (lee) |
+| **list_drivers** | `GET /drivers` | Lista pilotos de una sesión | **RDS** (lee) |
+| **driver_summary** | `GET /driver-summary` | Resumen de un piloto | **RDS** (lee) |
+| **driver_laps** | `GET /driver-laps` | Vueltas de un piloto | **RDS** (lee) |
+| **start_simulation** | `POST /start-simulation` | Lee la sesión, la corta en bloques de 10 s de carrera y publica **1 mensaje por bloque** | **RDS** (lee) → **SQS** |
+
+> Todas las Lambdas corren **fuera de la VPC**. Entran por **API Gateway** (salvo las 2 disparadas por EventBridge).
+
+### ECS Fargate (4 contenedores, en subredes privadas)
+
+| Servicio | Hace | Conecta con |
+| --- | --- | --- |
+| **f1-consumer** | Lee la cola, calcula métricas por piloto de cada bloque | **SQS** → **DynamoDB** |
+| **metrics-exporter** | Lee las métricas y las sirve como gauges Prometheus (`:9100`), maneja el "reloj" de la simulación | **DynamoDB** → expone `/metrics` |
+| **Prometheus** | Hace scrape del exporter (`:9090`) | ← metrics-exporter |
+| **Grafana** | Consulta Prometheus y dibuja el dashboard (`:3000`, vía ALB) | ← Prometheus |
+
+### SQS
+
+Cola **`simulation-events`**: un mensaje por bloque de 10 s. **Productor:** `start_simulation`.
+**Consumidor:** `f1-consumer`. Si un mensaje falla 3 veces → va a la **DLQ** (cola de descarte).
+
+### Qué se guarda en cada store
+
+- **S3** → los **payloads crudos** que baja de OpenF1 (telemetría decimada a ~1 Hz). Insumo intermedio.
+- **RDS (PostgreSQL)** → tabla **`session_events`**: los eventos de la sesión ya aplanados/ordenados
+  (lo que leen las APIs y `start_simulation`).
+- **DynamoDB** → **métricas por bloque de la simulación** (tabla única: `PK=SIM#<id>`,
+  `SK=META` o `BUCKET#<n>`, con TTL). Lo que escribe el consumer y lee el exporter.
+
+**En una línea:** OpenF1 → (ingest) S3 → (save) RDS → (simulación) SQS → (consumer) DynamoDB →
+(exporter → Prometheus → Grafana) dashboard.
