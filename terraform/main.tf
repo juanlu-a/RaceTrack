@@ -57,11 +57,13 @@ module "ingest_worker" {
 module "save_session" {
   source = "./modules/lambda"
 
-  function_name      = local.fn.save_session
-  role_arn           = aws_iam_role.lambda_exec.arn
-  runtime            = var.lambda_runtime
-  timeout            = var.lambda_timeout
-  memory_size        = var.lambda_memory_size
+  function_name = local.fn.save_session
+  role_arn      = aws_iam_role.lambda_exec.arn
+  runtime       = var.lambda_runtime
+  timeout       = var.lambda_timeout
+  # Full races (e.g. Monaco 9094, Singapore 9165) flatten a lot of events; 256 MB
+  # OOMs (Runtime.OutOfMemory). 1024 MB handles a complete race.
+  memory_size        = 1024
   log_retention_days = var.log_retention_days
   tags               = local.common_tags
 
