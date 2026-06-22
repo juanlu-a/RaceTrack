@@ -64,3 +64,11 @@ def progress_ratio(sim_race_time: float, max_race_time_seconds: float) -> float:
     except (TypeError, ValueError, ZeroDivisionError):
         pass
     return 0.0
+
+
+def is_complete(sim_race_time: float, max_race_time_seconds: float) -> bool:
+    """True once the clock has reached or passed the last race second."""
+    try:
+        return bool(max_race_time_seconds) and float(sim_race_time) >= float(max_race_time_seconds)
+    except (TypeError, ValueError):
+        return False

@@ -25,7 +25,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from prometheus_client import Gauge, start_http_server
 
-from clock import progress_ratio, select_bucket, sim_race_time_seconds, speed_factor
+from clock import is_complete, progress_ratio, select_bucket, sim_race_time_seconds, speed_factor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("metrics_exporter")
@@ -37,18 +37,21 @@ SIMULATION_ID = os.environ.get("SIMULATION_ID", "")
 METRICS_PORT = int(os.environ.get("METRICS_PORT", "9100"))
 REFRESH_SECONDS = float(os.environ.get("REFRESH_SECONDS", "5"))
 
+# DynamoDB driver metric key -> Prometheus gauge registry key.
 _DRIVER_GAUGES = {
     "speed_kmh": Gauge("f1_driver_speed_kmh", "Current speed (km/h)", ["simulation_id", "driver_id"]),
     "max_speed_kmh": Gauge("f1_driver_max_speed_kmh", "Max speed in bucket (km/h)", ["simulation_id", "driver_id"]),
     "gap_to_leader_seconds": Gauge("f1_driver_gap_to_leader_seconds", "Gap to leader (s)", ["simulation_id", "driver_id"]),
     "position": Gauge("f1_driver_position", "Race position", ["simulation_id", "driver_id"]),
     "lap_number": Gauge("f1_driver_lap_number", "Current lap number", ["simulation_id", "driver_id"]),
+    "last_lap_duration": Gauge("f1_driver_last_lap_seconds", "Last lap duration (s)", ["simulation_id", "driver_id"]),
     "x": Gauge("f1_driver_track_x", "Track X coordinate", ["simulation_id", "driver_id"]),
     "y": Gauge("f1_driver_track_y", "Track Y coordinate", ["simulation_id", "driver_id"]),
 }
 
 _RACE_TIME_GAUGE = Gauge("f1_simulation_race_time_seconds", "Simulation race time (s)", ["simulation_id"])
 _PROGRESS_GAUGE = Gauge("f1_simulation_progress_ratio", "Race progress [0,1]", ["simulation_id"])
+_COMPLETE_GAUGE = Gauge("f1_simulation_complete", "1 when simulation race time has finished", ["simulation_id"])
 
 
 def _table():
@@ -65,6 +68,15 @@ def _num(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _clear_gauges():
+    """Drop stale label combinations so only the active simulation snapshot is exported."""
+    for gauge in _DRIVER_GAUGES.values():
+        gauge.clear()
+    _RACE_TIME_GAUGE.clear()
+    _PROGRESS_GAUGE.clear()
+    _COMPLETE_GAUGE.clear()
 
 
 def _find_newest_meta(table):
@@ -101,9 +113,11 @@ def _load_simulation(table, simulation_id):
     return meta, buckets
 
 
-def _publish(simulation_id, bucket, race_time, ratio):
+def _publish(simulation_id, bucket, race_time, ratio, complete):
+    _clear_gauges()
     _RACE_TIME_GAUGE.labels(simulation_id=simulation_id).set(race_time)
     _PROGRESS_GAUGE.labels(simulation_id=simulation_id).set(ratio)
+    _COMPLETE_GAUGE.labels(simulation_id=simulation_id).set(1 if complete else 0)
     if bucket is None:
         return
     drivers = bucket.get("drivers") or {}
@@ -146,11 +160,18 @@ def main():
                     duration = _num(meta.get("simulation_duration_seconds")) or 0.0
                     factor = speed_factor(max_race, duration)
                     race_time = sim_race_time_seconds(elapsed, factor)
-                    ratio = progress_ratio(race_time, max_race)
+                    complete = is_complete(race_time, max_race)
+                    if complete and max_race > 0:
+                        race_time = max_race
+                    ratio = 1.0 if complete else progress_ratio(race_time, max_race)
 
                     ordered = sorted(buckets, key=lambda b: _num(b.get("race_time_start_seconds")) or 0.0)
                     bucket = select_bucket(ordered, race_time)
-                    _publish(simulation_id, bucket, race_time, ratio)
+                    if complete and ordered:
+                        bucket = ordered[-1]
+                    _publish(simulation_id, bucket, race_time, ratio, complete)
+                    if complete:
+                        log.info("simulation %s complete at race_time=%.1fs", simulation_id, race_time)
         except Exception:
             log.exception("refresh failed")
 
