@@ -32,3 +32,7 @@ enable_ecs = true
 # (~$0.83/day: 2 Fargate tasks + 2 public IPs). Images are already in ECR.
 # Requires enable_ecs = true. Flip back to false when the demo window ends.
 enable_monitoring = true
+
+# Private subnets for ECS tasks. staging and prod SHARE the default VPC, so each
+# env must use distinct CIDRs (staging here, prod uses .242/.243).
+private_subnet_cidrs = ["172.31.240.0/24", "172.31.241.0/24"]

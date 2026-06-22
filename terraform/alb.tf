@@ -34,7 +34,9 @@ resource "aws_lb" "grafana" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb[0].id]
-  subnets            = data.aws_subnets.default.ids
+  # Public, one-per-AZ subnets only (default-for-az). Using all default subnets
+  # would now also pick up the private subnets -> "multiple subnets in same AZ".
+  subnets = data.aws_subnets.public.ids
 
   tags = local.common_tags
 }
