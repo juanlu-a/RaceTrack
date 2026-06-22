@@ -25,7 +25,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from prometheus_client import Gauge, start_http_server
 
-from clock import is_complete, progress_ratio, select_bucket, sim_race_time_seconds, speed_factor
+from clock import progress_ratio, sim_race_time_seconds, speed_factor
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("metrics_exporter")
@@ -119,18 +119,36 @@ def _load_simulation(table, simulation_id):
     return meta, buckets
 
 
-def _publish(simulation_id, session_id, bucket, race_time, ratio, complete):
+def accumulate_drivers(ordered_buckets, up_to_race_time):
+    """Forward-fill: latest known value per driver/metric up to a given race time.
+    Sporadic fields (lap_number, last_lap_duration) only appear in the bucket where
+    the event happened, so we carry the last known value forward instead of letting
+    them flicker to no-data between laps."""
+    state = {}
+    for bucket in ordered_buckets:
+        start = _num(bucket.get("race_time_start_seconds"))
+        if start is None:
+            continue
+        if start > up_to_race_time:
+            break
+        for driver_id, metrics in (bucket.get("drivers") or {}).items():
+            d = state.setdefault(str(driver_id), {})
+            for metric_key in _DRIVER_GAUGES:
+                value = _num(metrics.get(metric_key))
+                if value is not None:
+                    d[metric_key] = value
+    return state
+
+
+def _publish(simulation_id, session_id, driver_state, race_time, ratio, complete):
     _RACE_TIME_GAUGE.labels(simulation_id=simulation_id).set(race_time)
     _PROGRESS_GAUGE.labels(simulation_id=simulation_id).set(ratio)
     _COMPLETE_GAUGE.labels(simulation_id=simulation_id).set(1 if complete else 0)
     _SIM_INFO_GAUGE.labels(simulation_id=simulation_id, session_id=str(session_id or "")).set(1)
-    if bucket is None:
-        return
-    drivers = bucket.get("drivers") or {}
-    for driver_id, metrics in drivers.items():
-        for metric_key, gauge in _DRIVER_GAUGES.items():
-            value = _num(metrics.get(metric_key))
-            if value is not None:
+    for driver_id, metrics in driver_state.items():
+        for metric_key, value in metrics.items():
+            gauge = _DRIVER_GAUGES.get(metric_key)
+            if gauge is not None:
                 gauge.labels(simulation_id=simulation_id, driver_id=str(driver_id)).set(value)
 
 
@@ -175,24 +193,31 @@ def main():
                     duration = _num(meta.get("simulation_duration_seconds")) or 0.0
                     factor = speed_factor(max_race, duration)
                     race_time = sim_race_time_seconds(elapsed, factor)
-                    complete = is_complete(race_time, max_race)
-                    if complete and max_race > 0:
-                        race_time = max_race
-                    ratio = 1.0 if complete else progress_ratio(race_time, max_race)
+                    # "Finished" is anchored to the wall clock (elapsed >= the requested
+                    # playback duration), NOT to max_race — max_race keeps growing as the
+                    # late SQS buckets arrive, which made the finished state oscillate and
+                    # the clock keep advancing. This makes it stable: it finishes once and
+                    # the race time freezes.
+                    complete = duration > 0 and elapsed >= duration
+                    if complete:
+                        race_time = max_race if max_race > 0 else race_time
+                        ratio = 1.0
+                    else:
+                        if max_race > 0:
+                            race_time = min(race_time, max_race)
+                        ratio = progress_ratio(race_time, max_race)
 
                     ordered = sorted(buckets, key=lambda b: _num(b.get("race_time_start_seconds")) or 0.0)
-                    bucket = select_bucket(ordered, race_time)
-                    # Always fall back to the latest bucket with data (e.g. when the race
-                    # is finished) so the dashboard shows the final standings, not blanks.
-                    if bucket is None and ordered:
-                        bucket = ordered[-1]
-                    elif complete and ordered:
-                        bucket = ordered[-1]
+                    # Forward-filled snapshot up to the current race time. When finished,
+                    # include every available bucket (final standings, completed as the
+                    # last late buckets land).
+                    up_to = float("inf") if complete else race_time
+                    driver_state = accumulate_drivers(ordered, up_to)
 
                     session_id = meta.get("session_id")
-                    _publish(simulation_id, session_id, bucket, race_time, ratio, complete)
+                    _publish(simulation_id, session_id, driver_state, race_time, ratio, complete)
                     if complete:
-                        log.info("simulation %s complete at race_time=%.1fs", simulation_id, race_time)
+                        log.info("simulation %s finished (elapsed=%.0fs)", simulation_id, elapsed)
         except Exception:
             log.exception("refresh failed")
 
