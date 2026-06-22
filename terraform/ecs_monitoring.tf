@@ -2,11 +2,10 @@
 # Gated on var.enable_monitoring (which requires var.enable_ecs, since Prometheus
 # scrapes the metrics-exporter). Services talk to each other over ECS Service
 # Connect using stable names — Prometheus scrapes "metrics-exporter:<port>" and
-# Grafana queries "prometheus:<port>". Both run in the default VPC's public
-# subnets with assign_public_ip=true (no NAT); reach the UIs at each task's
-# public IP (Grafana on grafana_port, Prometheus on prometheus_port). There is
-# no load balancer or persistent volume — this is a lightweight, default-off
-# stack; the verified path is the local docker-compose monitoring stack.
+# Grafana queries "prometheus:<port>". All tasks run in PRIVATE subnets with no
+# public IP (egress to AWS via VPC endpoints, see vpc_private.tf). Grafana is
+# reached from the internet through a public ALB (see alb.tf); Prometheus is not
+# internet-facing. There is no persistent volume — config is baked into the images.
 
 check "monitoring_requires_ecs" {
   assert {
@@ -41,8 +40,8 @@ resource "aws_cloudwatch_log_group" "grafana" {
 # self-referential rule (Service Connect, same SG). This shrinks the public
 # attack surface to just the password-protected Grafana UI.
 resource "aws_security_group" "monitoring" {
-  count       = var.enable_monitoring ? 1 : 0
-  name        = "${local.prefix}-monitoring-sg"
+  count = var.enable_monitoring ? 1 : 0
+  name  = "${local.prefix}-monitoring-sg"
   # NOTE: keep this string stable — an SG description is immutable, so changing
   # it forces a replace of an in-use SG (DependencyViolation). Behaviour is set
   # by the ingress rules below, not this text.
@@ -50,11 +49,11 @@ resource "aws_security_group" "monitoring" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "Grafana UI"
-    from_port   = var.grafana_port
-    to_port     = var.grafana_port
-    protocol    = "tcp"
-    cidr_blocks = var.monitoring_ingress_cidrs
+    description     = "Grafana UI from the ALB only"
+    from_port       = var.grafana_port
+    to_port         = var.grafana_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb[0].id]
   }
 
   ingress {
@@ -117,9 +116,9 @@ resource "aws_ecs_service" "prometheus" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.monitoring[0].id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   # Advertise "prometheus:<port>" for Grafana, and act as a client so it can
@@ -187,9 +186,9 @@ resource "aws_ecs_service" "grafana" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.monitoring[0].id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   # Client-only: lets Grafana reach "prometheus:<port>" over Service Connect.
@@ -197,6 +196,17 @@ resource "aws_ecs_service" "grafana" {
     enabled   = true
     namespace = aws_service_discovery_http_namespace.monitoring[0].arn
   }
+
+  # Expose the private Grafana task to the internet via the ALB.
+  load_balancer {
+    target_group_arn = aws_lb_target_group.grafana[0].arn
+    container_name   = "grafana"
+    container_port   = var.grafana_port
+  }
+
+  health_check_grace_period_seconds = 60
+
+  depends_on = [aws_lb_listener.grafana]
 
   tags = local.common_tags
 }

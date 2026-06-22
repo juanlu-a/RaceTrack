@@ -39,6 +39,20 @@ variable "db_allowed_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
+# ── Subredes privadas para las tareas ECS ────────────────────────────────────
+
+variable "private_subnet_cidrs" {
+  type        = list(string)
+  description = "CIDRs for the private subnets that host the ECS tasks (new blocks inside the default VPC 172.31.0.0/16, not overlapping the default subnets)."
+  default     = ["172.31.240.0/24", "172.31.241.0/24"]
+}
+
+variable "private_subnet_azs" {
+  type        = list(string)
+  description = "Availability zones for the private subnets (must match the length of private_subnet_cidrs)."
+  default     = ["us-east-1a", "us-east-1b"]
+}
+
 variable "db_instance_class" {
   type    = string
   default = "db.t3.micro"
