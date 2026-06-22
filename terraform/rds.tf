@@ -15,9 +15,24 @@ data "aws_subnets" "default" {
   }
 }
 
+# Only the original default subnets (one public subnet per AZ). We filter on
+# default-for-az so this EXCLUDES the private subnets we create in vpc_private.tf
+# (which live in the same shared default VPC). Used for the public ALB and the
+# RDS subnet group — both need the original public, one-per-AZ subnets.
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+  filter {
+    name   = "default-for-az"
+    values = ["true"]
+  }
+}
+
 resource "aws_db_subnet_group" "racetrack" {
   name       = "${local.prefix}-db-subnets"
-  subnet_ids = data.aws_subnets.default.ids
+  subnet_ids = data.aws_subnets.public.ids
   tags       = local.common_tags
 }
 
