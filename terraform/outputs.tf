@@ -52,6 +52,16 @@ output "ecs_service_names" {
   description = "ECS service names (null until enable_ecs=true)"
 }
 
+output "grafana_url" {
+  value       = var.enable_monitoring ? "http://${aws_lb.grafana[0].dns_name}" : null
+  description = "Public Grafana URL via the ALB (stable; null until enable_monitoring=true)"
+}
+
+output "private_subnet_ids" {
+  value       = var.enable_ecs ? aws_subnet.private[*].id : null
+  description = "Private subnet IDs hosting the ECS tasks (null until enable_ecs=true)"
+}
+
 output "monitoring_service_names" {
   value = var.enable_monitoring ? {
     prometheus = aws_ecs_service.prometheus[0].name

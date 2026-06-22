@@ -83,18 +83,22 @@ flowchart TB
         CW[(CloudWatch<br/>logs)]
     end
 
-    subgraph vpc["Red privada - Default VPC"]
-        subgraph ecs["Cluster ECS Fargate"]
-            CONS[f1-consumer]
-            EXP[metrics-exporter :9100]
-            PROM[Prometheus :9090]
-            GRAF[Grafana :3000]
+    subgraph vpc["VPC"]
+        ALB[ALB publico<br/>subredes publicas]
+        VPCE{{VPC Endpoints<br/>S3 DynamoDB ECR Logs SQS}}
+        subgraph priv["Subredes PRIVADAS (sin IP publica)"]
+            subgraph ecs["Cluster ECS Fargate"]
+                CONS[f1-consumer]
+                EXP[metrics-exporter :9100]
+                PROM[Prometheus :9090]
+                GRAF[Grafana :3000]
+            end
         end
         RDS[(RDS PostgreSQL :5432)]
     end
 
     internet --> API
-    internet -->|"Grafana :3000 - con login"| GRAF
+    internet -->|"Grafana - con login"| ALB --> GRAF
     internet -->|":5432 - con contrasena"| RDS
 
     API --> LAMBDAS
@@ -107,25 +111,31 @@ flowchart TB
     EXP --> DDB
     PROM -->|scrape| EXP
     GRAF -->|consulta| PROM
-    ecs -.imagenes.-> ECR
-    ecs -.logs.-> CW
+    ecs -.por red interna.-> VPCE
+    VPCE -.-> ECR
+    VPCE -.-> CW
+    VPCE -.-> S3
+    VPCE -.-> DDB
+    VPCE -.-> SQS
 ```
 
 ### Lo importante de la red y la seguridad
 
 - Las **Lambdas** y la **API Gateway** no están en la VPC (son "serverless", no manejás servidores).
-- Los 4 contenedores corren en **ECS Fargate** dentro de la VPC, en subredes públicas (sin NAT), por
-  eso cada tarea tiene IP pública para poder salir a buscar imágenes y hablar con los otros servicios.
-- **Lo único expuesto a internet del monitoreo es Grafana (puerto 3000) y pide usuario y contraseña.**
-  Prometheus y el exporter quedaron cerrados hacia afuera (solo se ven entre ellos por dentro).
+- Los 4 contenedores corren en **ECS Fargate** dentro de la VPC, en **subredes privadas SIN IP
+  pública**. Para hablar con los servicios de AWS (ECR, Logs, SQS, DynamoDB, S3) **no salen a
+  internet**: usan **VPC Endpoints** (red interna de AWS). Esta es la buena práctica.
+- **Grafana se expone por un ALB público** (subredes públicas) que reenvía al contenedor privado.
+  Da una **URL estable** y pide usuario y contraseña. Prometheus y el exporter **no** son
+  alcanzables desde internet (solo se ven por dentro de la VPC).
 
-| Servicio            | Puerto | Quién puede entrar                                                         |
-| ------------------- | ------ | -------------------------------------------------------------------------- |
-| Grafana             | 3000   | Internet,**pero con login** (anónimo apagado, contraseña en secreto de CI) |
-| Prometheus          | 9090   | Solo interno (no internet)                                                 |
-| metrics-exporter    | 9100   | Solo dentro de la VPC (no internet)                                        |
-| f1-consumer         | —      | Nada entra (solo sale)                                                     |
-| RDS (base de datos) | 5432   | Internet con contraseña (las Lambdas están fuera de la VPC)                |
+| Servicio            | Puerto | Quién puede entrar                                                       |
+| ------------------- | ------ | ------------------------------------------------------------------------ |
+| ALB → Grafana       | 80→3000 | Internet, **pero Grafana pide login** (anónimo apagado, pass en secreto) |
+| Prometheus          | 9090   | Solo interno (no internet)                                               |
+| metrics-exporter    | 9100   | Solo dentro de la VPC (no internet)                                      |
+| f1-consumer         | —      | Nada entra (solo sale, por VPC endpoints)                                |
+| RDS (base de datos) | 5432   | Internet con contraseña (las Lambdas están fuera de la VPC)              |
 
 > 💰 **No puede explotar el costo:** la cuenta usa el plan de créditos gratis. Si algo se abusa, se
 > gastan los créditos y AWS _pausa_ el acceso — nunca te llega una factura sorpresa a la tarjeta.
@@ -142,6 +152,8 @@ flowchart TB
 | Procesos largos    | f1-consumer (Fargate)          | Cola SQS → métricas en DynamoDB                                     |
 | Procesos largos    | metrics-exporter (Fargate)     | DynamoDB → métricas Prometheus, lleva el reloj                      |
 | Monitoreo          | Prometheus + Grafana (Fargate) | Recolecta y dibuja los tableros                                     |
+| Balanceador        | ALB (público)                  | Expone Grafana (privado) con URL estable                            |
+| Red interna        | VPC Endpoints                  | S3/DynamoDB (gateway) + ECR/Logs/SQS (interface), sin salir a internet |
 | Datos crudos       | S3                             | Lo que baja de OpenF1                                               |
 | Base de datos      | RDS PostgreSQL                 | Eventos de la sesión (`session_events`)                             |
 | Métricas           | DynamoDB                       | Una tabla, expira sola (TTL)                                        |
