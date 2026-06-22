@@ -146,9 +146,9 @@ resource "aws_ecs_service" "f1_consumer" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_consumer[0].id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   tags = local.common_tags
@@ -163,9 +163,9 @@ resource "aws_ecs_service" "metrics_exporter" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.default.ids
+    subnets          = aws_subnet.private[*].id
     security_groups  = [aws_security_group.ecs_exporter[0].id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   # When monitoring is on, advertise the exporter via Service Connect so
